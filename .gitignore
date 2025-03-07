@@ -1,4 +1,7 @@
 /build/
 /dist/
 /PyTomo.egg-info/
-/PyTomo/__pycache__/
+
+PyTomo/__pycache__/
+*.py[cod]
+*$py.class
