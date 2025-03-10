@@ -10,6 +10,13 @@ import time
 
 
 import numpy as np
+try:
+    import cupy as cp
+    if cp.cuda.is_available():
+        cuda_available = True
+except:
+    cuda_available = False
+
 from scipy.sparse import issparse, csr_matrix
 from scipy.sparse.linalg import svds
 from scipy.linalg import svd
@@ -21,6 +28,8 @@ from scipy.signal import convolve2d
 import os
 # Library needed to interact with configuration files.
 import configparser
+import math
+
 
 log = logging.getLogger('')
 
@@ -170,6 +179,30 @@ def tomask(index):
     return np.array([True] * len(index.flatten())).astype(bool)
 
 
+def bessel_i(n, x, terms=10):
+    """Compute the modified Bessel function of the first kind I_n(x) using a power series expansion using CuPy."""
+    x = cp.asarray(x, dtype=cp.float64)
+    sum_result = cp.zeros_like(x, dtype=cp.float64)
+
+    for m in range(terms):
+        term = (1 / (math.factorial(m) * math.gamma(m + n + 1))) * (x / 2) ** (2 * m + n)
+        sum_result += term
+
+    return sum_result
+
+def bessel_k(n, x, terms=10):
+    """Compute the modified Bessel function of the second kind K_n(x) using CuPy, supporting both scalar and array inputs."""
+    x = cp.asarray(x, dtype=cp.float64)
+
+    if cp.any(x <= 0):
+        raise ValueError("x must be positive for K_n(x)")
+
+    i_n = bessel_i(n, x, terms)
+    i_neg_n = bessel_i(-n, x, terms)
+
+    return (np.pi / 2) * (i_neg_n - i_n) / np.sin(n * cp.pi)
+
+
 def covariance_matrix(rho, r0, L0):
     L0r0ratio = (L0 / r0) ** (5 / 3)
     cst = (24 * gamma(6 / 5) / 5) ** (5 / 6) * \
@@ -179,7 +212,13 @@ def covariance_matrix(rho, r0, L0):
            (2 * np.pi ** (8 / 3))) * L0r0ratio
     index = rho != 0
     u = 2 * np.pi * rho[index] / L0
-    out[index] = cst * u ** (5 / 6) * kv(5 / 6, u)
+    if cuda_available:
+        out[index] = cst * u ** (5 / 6) * bessel_k(5 / 6, cp.asarray(u), terms=10).get()
+
+    else:
+        out[index] = cst * u ** (5 / 6) * kv(5 / 6, u)
+    # print("Using fast version")
+
     return out
 
 

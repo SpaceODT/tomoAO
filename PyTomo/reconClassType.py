@@ -15,6 +15,14 @@ from .tomography_tools import *
 
 
 import numpy as np
+try:
+    import cupy as cp
+    if cp.cuda.is_available():
+        cuda_available = True
+except:
+    cuda_available = False
+
+
 import matplotlib.pyplot as plt
 from scipy.sparse import block_diag
 
@@ -163,17 +171,17 @@ class LinearMMSE:
 
         #self.atmModel = atmModel
         #if isinstance(guideStar, list):
-            # It's already a list, no need to convert
+        # It's already a list, no need to convert
         #    self.guideStar = guideStar
         #else:
-            # Convert to a list
+        # Convert to a list
         #    self.guideStar = [guideStar]
 
         #if isinstance(mmseStar, list):
-            # It's already a list, no need to convert
+        # It's already a list, no need to convert
         #    self.mmseStar = mmseStar
         #else:
-            # Convert to a list
+        # Convert to a list
         #    self.mmseStar = [mmseStar]
 
         #self.dm = dm
@@ -199,8 +207,11 @@ class LinearMMSE:
         self.mmseReconstructor = None
 
         self.weight_vector = weight_vector
+
         self.static_maps_matrices = static_maps_matrices
-        self.inv_cov_mat = static_maps_matrices.invcov
+
+        if static_maps_matrices is not None:
+            self.inv_cov_mat = static_maps_matrices.invcov
 
         if intMat is not None:
             self.intMat = intMat
@@ -305,7 +316,12 @@ class LinearMMSE:
 
         # %% FITTING MATRIX
         if self.dm is not None:
-            self.fittingMatrix = np.linalg.pinv(2*self.dm.modes[self.outputRecGrid.flatten("F"),], rcond=1e-3)
+            iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
+
+            if cuda_available:
+                self.fittingMatrix = cp.linalg.pinv(cp.asarray(iFittingMatrix), rcond=1e-3).get()
+            else:
+                self.fittingMatrix = np.linalg.pinv(iFittingMatrix, rcond=1e-3)
         else:
             self.fittingMatrix = None
 
@@ -391,12 +407,24 @@ class LinearMMSE:
         #
         m_Gamma = self.Gamma
         # breakpoint()
+
+        if cuda_available:
+            m_Cox = cp.asarray(m_Cox)
+            m_Cxx = cp.asarray(m_Cxx)
+            m_Cn = cp.asarray(m_Cn)
+            m_Gamma = cp.asarray(m_Gamma.todense())
+
         if self.weightOptimDir == -1:
             m_mmseReconstructor = [None] * self.nMmseStar
             for k in range(self.nMmseStar):
                 # breakpoint()
+
+                if cuda_available:
+                    m_mmseReconstructor[k] = (m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)).get()
+                else:
+                    m_mmseReconstructor[k] = m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
+
                 # m_mmseReconstructor[k] = m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
-                m_mmseReconstructor[k] = m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
 
         else:  # weighted sum over all the optimisation directions
             # This code uses the ss stars to compute a weighted average tomographic
