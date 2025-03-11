@@ -9,7 +9,7 @@ import pdb
 
 #os.chdir('//')
 
-from .tomography_tools import *
+import PyTomo.tools.tomography_tools as tools
 
 # %% USE OOPAO, define a geometry and compute the cross-covariance matrix for all the layers
 # from aotools.astronomy import FLUX_DICTIONARY
@@ -146,10 +146,11 @@ class AOSystem:
         act_mask = act_mask.astype(bool)
         # breakpoint()
 
-        X, Y = meshgrid(param['nActuator'], tel.D, offset_x=0.0, offset_y=0.0, stretch_x=1, stretch_y=1)
+        X, Y = tools.meshgrid(param['nActuator'], tel.D, offset_x=0.0, offset_y=0.0, stretch_x=1, stretch_y=1)
         act_mask = np.pad(act_mask, pad_width=2, mode='constant', constant_values=0)
         coordinates = np.array([X[act_mask], Y[act_mask]]).T
 
+        self.dm_coordinates = coordinates
         # if no coordinates specified, create a cartesian dm
         resolution = tel.resolution
 
@@ -190,7 +191,7 @@ class AOSystem:
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
 
-        outputReconstructiongrid = reconstructionGrid(subap_mask, param['os'], dm_space=False)
+        outputReconstructiongrid = tools.reconstructionGrid(subap_mask, param['os'], dm_space=False)
 
 
         # %% -----------------------     Self Allocation   ----------------------------------

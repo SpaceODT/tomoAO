@@ -11,7 +11,7 @@ Created on Tue Apr 18 15:25:00 2023
 #from aoreconstructor.lib.tools import *
 
 # from PyAO.lib.shwfs_cmds import *
-from .tomography_tools import *
+import PyTomo.tools.tomography_tools as tools
 
 
 import numpy as np
@@ -193,7 +193,7 @@ class LinearMMSE:
         #self.unfilteredSubapMask = validSubapMask
         self.unfilteredSubapMask = aoSys.subap_mask
 
-        self.runtime_valid_subap_mask = check_subap_mask_dims(self.unfilteredSubapMask, len(self.guideStar))
+        self.runtime_valid_subap_mask = tools.check_subap_mask_dims(self.unfilteredSubapMask, len(self.guideStar))
         self.model = model
         self.zernikeMode = zernikeMode
 
@@ -262,7 +262,7 @@ class LinearMMSE:
 
         else:  # otherwise it's the same for all, in which case one Gradient Matrix is computed and block_diag()
 
-            Gamma, gridMask = sparseGradientMatrixAmplitudeWeighted(self.unfilteredSubapMask, amplMask=None, os=self.os)
+            Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfilteredSubapMask, amplMask=None, os=self.os)
             #pdb.set_trace()
             # breakpoint()
             self.Gamma_single = Gamma.copy()
@@ -331,13 +331,13 @@ class LinearMMSE:
         # %% LGS-to-science cross-covariance matrix
         self.Cox = []
         for i in range(len(self.mmseStar)):
-            res = spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
+            res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
                                                 self.unfilteredSubapMask, self.os)
             self.Cox.append(res)
 
 
         # %% LGS-to-LGS cross-covariance matrix
-        self.Cxx = spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
+        self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
                                                  self.unfilteredSubapMask, self.os)
 
         # %%
@@ -459,7 +459,7 @@ class LinearMMSE:
         if runtime_valid_act_mask is None:
             runtime_valid_act_mask = np.array([True] * len(self.dm.validAct.flatten())).astype(bool)
 
-        runtime_valid_subap_mask = check_subap_mask_dims(runtime_valid_subap_mask, len(self.guideStar))
+        runtime_valid_subap_mask = tools.check_subap_mask_dims(runtime_valid_subap_mask, len(self.guideStar))
 
         runtime_valid_subap_mask = tools.toggle(runtime_valid_subap_mask)
 
@@ -468,14 +468,14 @@ class LinearMMSE:
         ids = []
         idx = []
         maxValidSubap = np.count_nonzero(self.unfilteredSubapMask)
-        refRecGrid = reconstructionGrid(self.unfilteredSubapMask, self.os)
+        refRecGrid = tools.reconstructionGrid(self.unfilteredSubapMask, self.os)
         for k in range(len(self.guideStar)):
             maskS = runtime_valid_subap_mask[:, k][self.unfilteredSubapMask.flatten()]
             res = np.where(maskS)[0]
             ids.append(np.concatenate((res, res + maxValidSubap)) + k * 2 * maxValidSubap)
 
             # Compute the discrete reconstruction mask from the subap_mask passed on as input
-            maskX = reconstructionGrid(np.reshape(runtime_valid_subap_mask[:, k], (nSubap, nSubap)), self.os)
+            maskX = tools.reconstructionGrid(np.reshape(runtime_valid_subap_mask[:, k], (nSubap, nSubap)), self.os)
             res = np.where(maskX[refRecGrid])[0]
             idx.append(res + k * np.count_nonzero(refRecGrid))
 
@@ -537,140 +537,140 @@ class LinearMMSE:
 
 
 # TODO This class shall be renamed to WLSR for weighted least-squares reconstructor
-class WLSR:
-    def __init__(self, aoSys, intMat, static_maps_matrices, runtime_valid_subap_mask=None, runtime_valid_act_mask=None, noiseCovariance=1, nTruncModes=0, minioning_flag='ON', alpha=None, weight_vector=None, algorithm='bayesian'):
-        """Initialization function.
-
-        Instantiate a glao reconstructor
-
-        :param:
-        :param ordering: keck(default)|sim Whereas to interleave the x-y slopes (keck ordering) or to leave allX-then-allY for simulations
-
-        :return: This class reads the interaction matrix and generates a MMSE-like reconstructor
-        """
-        self.lsReconstructor = None
-
-        self.dm = aoSys.dm
-        self.guideStar = aoSys.lgsAst
-        self.unfilteredSubapMask = aoSys.subap_mask
-
-        # if not set by user, then the runtime_valid_subap_mask is the global one for this WFS
-        if runtime_valid_subap_mask is None:
-            self.runtime_valid_subap_mask = np.expand_dims(aoSys.subap_mask, axis=-1)  # at first use unfiltered mask
-        else:
-            self.runtime_valid_subap_mask = runtime_valid_subap_mask
-
-        # if not set by user, then the runtime_valid_act_mask is the global one for this DM
-        if runtime_valid_act_mask is None:
-            self.runtime_valid_act_mask = np.array([True] * len(self.dm.validAct.flatten())).astype(bool)
-        else:
-            self.runtime_valid_act_mask = runtime_valid_act_mask
-
-        self.nTruncModes = nTruncModes
-        self.alpha = alpha
-        self.weight_vector = weight_vector
-        self.static_maps_matrices = static_maps_matrices
-        self.inv_cov_mat = static_maps_matrices.invcov
-        self.algorithm = algorithm
-
-        if intMat is not None:
-            self.intMat = intMat
-
-        # the original Imat remains unfiltered as a property of the class. A runtime copy is created for processing
-        self.runtime_intMat = self.intMat.copy()
-        #import pdb
-        #pdb.set_trace()
-        if np.isscalar(noiseCovariance):
-            self.noiseCovariance = np.eye(self.intMat.shape[0])
-        else:
-            self.noiseCovariance = noiseCovariance
-
-        # The fitting matrix is an identity with dim=all_valid_actuators for a given DM
-        self.fittingMatrix = np.eye(len(self.dm.validAct))
-
-        # call the noise-weighted least-squares reconstructor
-        # self.solveWeightedLeastSquares(noiseCovariance)
-
-        # reconstructor matrix assembly
-        # self.R_filtered = getRecFiltered(self, self.unfilteredSubapMask, self.dm.validAct)
-
-        #self.update(self.runtime_valid_subap_mask, self.runtime_valid_act_mask)
-
-        # call the noise-weighted least-squares reconstructor
-        self.solveWeightedLeastSquares()
-
-        self.R = assembleRecon(self, self.runtime_valid_subap_mask, self.dm.validAct, minioning_flag=minioning_flag)
-    def solveWeightedLeastSquares(self):
-
-        if self.algorithm is None or self.algorithm.lower() == 'bayesian':
-            # R = (H' W  H + \alpha \Sigma_phi^-1)^\dag H'W
-            #self.R_weightedLeastSquaresReconstructor = \
-            #    reconstructBayesian(self.runtime_intMat, self.weight_vector, self.inv_cov_mat, self.alpha)
-
-            self.R_weightedLeastSquaresReconstructor = \
-                averaging_bayesian_reconstructor_dm_space(self.intMat, self.weight_vector, self.inv_cov_mat, self.alpha)
-            #self.R_weightedLeastSquaresReconstructor = np.linalg.inv((self.runtime_intMat.T * self.weight_matrix.T) @ self.runtime_intMat
-            #                                                         + self.alpha * 1e-3 * self.inv_cov_mat + np.eye(   self.runtime_intMat.shape[1])) @ (self.runtime_intMat.T * self.weight_matrix.T)  # the one is there to penalize piston
-
-        elif self.algorithm.lower() == 'svd':
-            # R = tsvd(H' \Sigma_noise  H ) H' \Sigma_noise
-            # self.R_weightedLeastSquaresReconstructor = tsvd(
-            #     self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix @ self.runtime_intMat,
-            #     self.nTruncModes) @ self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix
-            self.R_weightedLeastSquaresReconstructor = tsvd(
-                self.intMat.T @ self.noiseCovariance @ self.intMat,
-                self.nTruncModes) @ self.intMat.T @ self.noiseCovariance
-        else:
-            # R = (H' \Sigma_noise  H)^\dag H' \Sigma_noise
-            self.R_weightedLeastSquaresReconstructor = np.linalg.pinv(
-                self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix @ self.runtime_intMat) @ self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix
-
-
-    #@property
-    #def R_unfiltered(self):
-    #    return self._R_unfiltered
-    @property
-    def R_unfiltered(self):
-        return self.fittingMatrix @ self.R_weightedLeastSquaresReconstructor
-
-    def __mul__(self, data):
-        return self.R @ data
-
-    def update(self, runtime_valid_subap_mask, runtime_valid_act_mask, minioning_flag='ON'):
-
-        self.runtime_valid_subap_mask = check_subap_mask_dims(runtime_valid_subap_mask, len(self.guideStar))
-
-        runtime_valid_subap_mask = toggle(self.runtime_valid_subap_mask)
-        nSubap = self.unfilteredSubapMask.shape[0]
-
-        ids = []
-        maxValidSubap = np.count_nonzero(self.unfilteredSubapMask)
-        for k in range(len(self.guideStar)):
-            maskS = runtime_valid_subap_mask[:, k][self.unfilteredSubapMask.flatten()]
-            res = np.where(maskS)[0]
-            ids.append(np.concatenate((res, res + maxValidSubap)) + k * 2 * maxValidSubap)
-
-        # convert lists to arrays
-        ids = np.concatenate(ids)
-
-        # valid DM actuators
-        maskA = runtime_valid_act_mask[self.dm.validAct.reshape(-1, 1)]
-        ida = np.where(maskA)[0]
-
-        print(" -->> WLSR updator!")
-
-        self.runtime_noiseCovarianceMatrix = self.noiseCovariance.copy()
-
-        self.runtime_noiseCovarianceMatrix = self.runtime_noiseCovarianceMatrix[ids][:, ids]
-        self.runtime_intMat = self.intMat[ids][:, :]
-
-        # call the noise-weighted least-squares reconstructor
-        self.solveWeightedLeastSquares()
-
-        # reconstructor matrix assembly
-        runtime_valid_subap_mask = tools.toggle(runtime_valid_subap_mask)
-
-        self.R = assembleRecon(self, runtime_valid_subap_mask, self.dm.validAct, minioning_flag=minioning_flag)
+# class WLSR:
+#     def __init__(self, aoSys, intMat, static_maps_matrices, runtime_valid_subap_mask=None, runtime_valid_act_mask=None, noiseCovariance=1, nTruncModes=0, minioning_flag='ON', alpha=None, weight_vector=None, algorithm='bayesian'):
+#         """Initialization function.
+#
+#         Instantiate a glao reconstructor
+#
+#         :param:
+#         :param ordering: keck(default)|sim Whereas to interleave the x-y slopes (keck ordering) or to leave allX-then-allY for simulations
+#
+#         :return: This class reads the interaction matrix and generates a MMSE-like reconstructor
+#         """
+#         self.lsReconstructor = None
+#
+#         self.dm = aoSys.dm
+#         self.guideStar = aoSys.lgsAst
+#         self.unfilteredSubapMask = aoSys.subap_mask
+#
+#         # if not set by user, then the runtime_valid_subap_mask is the global one for this WFS
+#         if runtime_valid_subap_mask is None:
+#             self.runtime_valid_subap_mask = np.expand_dims(aoSys.subap_mask, axis=-1)  # at first use unfiltered mask
+#         else:
+#             self.runtime_valid_subap_mask = runtime_valid_subap_mask
+#
+#         # if not set by user, then the runtime_valid_act_mask is the global one for this DM
+#         if runtime_valid_act_mask is None:
+#             self.runtime_valid_act_mask = np.array([True] * len(self.dm.validAct.flatten())).astype(bool)
+#         else:
+#             self.runtime_valid_act_mask = runtime_valid_act_mask
+#
+#         self.nTruncModes = nTruncModes
+#         self.alpha = alpha
+#         self.weight_vector = weight_vector
+#         self.static_maps_matrices = static_maps_matrices
+#         self.inv_cov_mat = static_maps_matrices.invcov
+#         self.algorithm = algorithm
+#
+#         if intMat is not None:
+#             self.intMat = intMat
+#
+#         # the original Imat remains unfiltered as a property of the class. A runtime copy is created for processing
+#         self.runtime_intMat = self.intMat.copy()
+#         #import pdb
+#         #pdb.set_trace()
+#         if np.isscalar(noiseCovariance):
+#             self.noiseCovariance = np.eye(self.intMat.shape[0])
+#         else:
+#             self.noiseCovariance = noiseCovariance
+#
+#         # The fitting matrix is an identity with dim=all_valid_actuators for a given DM
+#         self.fittingMatrix = np.eye(len(self.dm.validAct))
+#
+#         # call the noise-weighted least-squares reconstructor
+#         # self.solveWeightedLeastSquares(noiseCovariance)
+#
+#         # reconstructor matrix assembly
+#         # self.R_filtered = getRecFiltered(self, self.unfilteredSubapMask, self.dm.validAct)
+#
+#         #self.update(self.runtime_valid_subap_mask, self.runtime_valid_act_mask)
+#
+#         # call the noise-weighted least-squares reconstructor
+#         self.solveWeightedLeastSquares()
+#
+#         self.R = assembleRecon(self, self.runtime_valid_subap_mask, self.dm.validAct, minioning_flag=minioning_flag)
+#     def solveWeightedLeastSquares(self):
+#
+#         if self.algorithm is None or self.algorithm.lower() == 'bayesian':
+#             # R = (H' W  H + \alpha \Sigma_phi^-1)^\dag H'W
+#             #self.R_weightedLeastSquaresReconstructor = \
+#             #    reconstructBayesian(self.runtime_intMat, self.weight_vector, self.inv_cov_mat, self.alpha)
+#
+#             self.R_weightedLeastSquaresReconstructor = \
+#                 averaging_bayesian_reconstructor_dm_space(self.intMat, self.weight_vector, self.inv_cov_mat, self.alpha)
+#             #self.R_weightedLeastSquaresReconstructor = np.linalg.inv((self.runtime_intMat.T * self.weight_matrix.T) @ self.runtime_intMat
+#             #                                                         + self.alpha * 1e-3 * self.inv_cov_mat + np.eye(   self.runtime_intMat.shape[1])) @ (self.runtime_intMat.T * self.weight_matrix.T)  # the one is there to penalize piston
+#
+#         elif self.algorithm.lower() == 'svd':
+#             # R = tsvd(H' \Sigma_noise  H ) H' \Sigma_noise
+#             # self.R_weightedLeastSquaresReconstructor = tsvd(
+#             #     self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix @ self.runtime_intMat,
+#             #     self.nTruncModes) @ self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix
+#             self.R_weightedLeastSquaresReconstructor = tsvd(
+#                 self.intMat.T @ self.noiseCovariance @ self.intMat,
+#                 self.nTruncModes) @ self.intMat.T @ self.noiseCovariance
+#         else:
+#             # R = (H' \Sigma_noise  H)^\dag H' \Sigma_noise
+#             self.R_weightedLeastSquaresReconstructor = np.linalg.pinv(
+#                 self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix @ self.runtime_intMat) @ self.runtime_intMat.T @ self.runtime_noiseCovarianceMatrix
+#
+#
+#     #@property
+#     #def R_unfiltered(self):
+#     #    return self._R_unfiltered
+#     @property
+#     def R_unfiltered(self):
+#         return self.fittingMatrix @ self.R_weightedLeastSquaresReconstructor
+#
+#     def __mul__(self, data):
+#         return self.R @ data
+#
+#     def update(self, runtime_valid_subap_mask, runtime_valid_act_mask, minioning_flag='ON'):
+#
+#         self.runtime_valid_subap_mask = check_subap_mask_dims(runtime_valid_subap_mask, len(self.guideStar))
+#
+#         runtime_valid_subap_mask = toggle(self.runtime_valid_subap_mask)
+#         nSubap = self.unfilteredSubapMask.shape[0]
+#
+#         ids = []
+#         maxValidSubap = np.count_nonzero(self.unfilteredSubapMask)
+#         for k in range(len(self.guideStar)):
+#             maskS = runtime_valid_subap_mask[:, k][self.unfilteredSubapMask.flatten()]
+#             res = np.where(maskS)[0]
+#             ids.append(np.concatenate((res, res + maxValidSubap)) + k * 2 * maxValidSubap)
+#
+#         # convert lists to arrays
+#         ids = np.concatenate(ids)
+#
+#         # valid DM actuators
+#         maskA = runtime_valid_act_mask[self.dm.validAct.reshape(-1, 1)]
+#         ida = np.where(maskA)[0]
+#
+#         print(" -->> WLSR updator!")
+#
+#         self.runtime_noiseCovarianceMatrix = self.noiseCovariance.copy()
+#
+#         self.runtime_noiseCovarianceMatrix = self.runtime_noiseCovarianceMatrix[ids][:, ids]
+#         self.runtime_intMat = self.intMat[ids][:, :]
+#
+#         # call the noise-weighted least-squares reconstructor
+#         self.solveWeightedLeastSquares()
+#
+#         # reconstructor matrix assembly
+#         runtime_valid_subap_mask = tools.toggle(runtime_valid_subap_mask)
+#
+#         self.R = assembleRecon(self, runtime_valid_subap_mask, self.dm.validAct, minioning_flag=minioning_flag)
 
 
 if __name__ == '__main__':

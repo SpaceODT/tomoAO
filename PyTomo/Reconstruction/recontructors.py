@@ -1,7 +1,7 @@
-from .tomography_tools import *
-from .reconClassType import LinearMMSE
+import PyTomo.tools.tomography_tools as tools
+from PyTomo.Reconstruction.reconClassType import LinearMMSE
 
-from scipy.sparse import block_diag
+from scipy.linalg import block_diag
 
 import numpy as np
 try:
@@ -12,9 +12,9 @@ except:
     cuda_available = False
 
 
-def tomographic_reconstructor_phase_space(aoSys, validSubapMask, weight, alpha, Cn=None, debug=False):
+def tomographic_reconstructor_phase_space(aoSys, weight, alpha, Cn=None, debug=False):
 
-    rec = LinearMMSE(aoSys, alpha=alpha, weight_vector=weight, os=2)
+    rec = LinearMMSE(aoSys, alpha=alpha, weight_vector=weight, os=2, noiseCovariance=Cn)
 
     if debug:
         return rec
@@ -26,12 +26,12 @@ def tomographic_reconstructor_phase_space(aoSys, validSubapMask, weight, alpha, 
 def tomographic_reconstructor_dm_space(aoSys, IM, weight, alpha, Cn=None):
 
     # %% LGS-to-LGS cross-covariance matrix
-    Cxx = spatioAngularCovarianceMatrix(aoSys.tel, aoSys.atm, aoSys.lgsAst, aoSys.lgsAst,
+    Cxx = tools.spatioAngularCovarianceMatrix(aoSys.tel, aoSys.atm, aoSys.lgsAst, aoSys.lgsAst,
                                               aoSys.act_mask, os=1, dm_space=True)
     # %% LGS-to-science cross-covariance matrix
     Cox = []
     for i in range(len([aoSys.mmseStar])):
-        res = spatioAngularCovarianceMatrix(aoSys.tel, aoSys.atm, [[aoSys.mmseStar][i]],
+        res = tools.spatioAngularCovarianceMatrix(aoSys.tel, aoSys.atm, [[aoSys.mmseStar][i]],
                                                   aoSys.lgsAst,
                                                   aoSys.act_mask, os=1, dm_space=True)
         Cox.append(res)
@@ -90,7 +90,7 @@ def averaging_bayesian_reconstructor_dm_space(IM, weight_vector, inv_cov_mat, al
 
     # perform the regularized inversion
     return 1 / n_lgs * np.hstack([np.eye(n_act)] * n_lgs) @ np.linalg.inv(
-        IMw.T @ IM + alpha * 1e-3 * block_diag(*[inv_cov_mat] * n_lgs) + 1.) @ (
+        IMw.T @ IM + alpha * 1e-3 * block_diag(*[inv_cov_mat]*n_lgs) + 1.) @ (
         IMw.T)  # the one is there to penalize piston
 
 

@@ -123,29 +123,29 @@ def readFromBinary(filename, expected_shape,file_format):
     return data_vector.reshape(expected_shape)
 
 
-def load_from_ini(config_file, ao_mode=None, config_dir=os.path.dirname(__file__)):
-    # Instantiate configparser
-    config = configparser.ConfigParser()
-    config.optionxform = str
-    # Path of the configuration file is given as the "configdir" argument
-    # Read the configuration file
-    config.read(config_dir + config_file)
-
-    # Get the section of the config file containing the reconstructor
-    # parameters for the chosen AO_MODE
-    if ao_mode is None:
-        ao_mode = 'default'
-
-    parm = dict(config[ao_mode].items())
-    # breakpoint()
-    #print(parm)
-    # for key, value in parm.items():
-    #     print(key, value)
-    #     print(eval(value))
-    #     print("----------------")
-    # breakpoint()
-    return {key: eval(value) for key, value in
-            parm.items()}  # returns a dictionary with entries in specified data types
+# def load_from_ini(config_file, ao_mode=None, config_dir=os.path.dirname(__file__)):
+#     # Instantiate configparser
+#     config = configparser.ConfigParser()
+#     config.optionxform = str
+#     # Path of the configuration file is given as the "configdir" argument
+#     # Read the configuration file
+#     config.read(config_dir + config_file)
+#
+#     # Get the section of the config file containing the reconstructor
+#     # parameters for the chosen AO_MODE
+#     if ao_mode is None:
+#         ao_mode = 'default'
+#
+#     parm = dict(config[ao_mode].items())
+#     # breakpoint()
+#     #print(parm)
+#     # for key, value in parm.items():
+#     #     print(key, value)
+#     #     print(eval(value))
+#     #     print("----------------")
+#     # breakpoint()
+#     return {key: eval(value) for key, value in
+#             parm.items()}  # returns a dictionary with entries in specified data types
 
 
 def idx2idx(idx_valid, mask):

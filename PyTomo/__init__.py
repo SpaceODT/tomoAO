@@ -1,3 +1,5 @@
 # from .reconClassType import LinearMMSE
-import PyTomo.recontructors
-from .aoSystem import AOSystem
+import PyTomo.Reconstruction.recontructors
+import PyTomo.IO
+import PyTomo.Simmulation
+import PyTomo.Reconstruction
