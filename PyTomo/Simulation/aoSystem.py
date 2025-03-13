@@ -4,18 +4,11 @@ Created on Tue Apr 18 15:25:00 2023
 @author: ccorreia@spaceodt.net
 """
 
-import os
-import pdb
-
-#os.chdir('//')
-
 import PyTomo.tools.tomography_tools as tools
 
 # %% USE OOPAO, define a geometry and compute the cross-covariance matrix for all the layers
-# from aotools.astronomy import FLUX_DICTIONARY
-
-# import matplotlib.pyplot as plt
 import numpy as np
+from scipy.io import loadmat
 
 from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
@@ -24,9 +17,7 @@ from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
 from OOPAO.ShackHartmann import ShackHartmann
 
-# %% -----------------------     read parameter file   ----------------------------------
-# from aoscripts.ltaoReconstructor.parameterFile_Keck_LTAO import initializeParameterFile
-# param = initializeParameterFile()
+
 
 
 class AOSystem:
@@ -46,12 +37,10 @@ class AOSystem:
 
         tel.apply_spiders(angle, thickness_spider, offset_X=offset_X, offset_Y=offset_Y)
 
-        from scipy.io import loadmat
-        # data = loadmat('./aodata/tel_pupil.mat')  # Load the .mat file
+
         data = loadmat(f'{param["path2parms"]}tel_pupil.mat')
         pupil = data['pup']  # Extract the array
 
-        # print(pupil)
         tel.pupil = pupil
         # %% -----------------------     NGS   ----------------------------------
         # create the Source object
@@ -65,35 +54,13 @@ class AOSystem:
         lgsAst = []
         ntemp = param['n_lgs']
         for kLgs in range(param["n_lgs"]):
-            #print(f"{kLgs} {ntemp} KOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOKOK")
             lgs = Source(optBand=param['opticalBand'],
                       magnitude=param['lgs_magnitude'],
                       altitude=param['lgs_altitude'],
                       coordinates=[param['lgs_zenith'][kLgs], param['lgs_azimuth'][kLgs]])
             lgsAst.append(lgs)
 
-        # lgs1 = Source(optBand=param['opticalBand'],
-        #               magnitude=param['magnitude'],
-        #               altitude=param['srcAltitude'],
-        #               coordinates=[param['lgs_zenith'][0], param['lgs_azimuth'][0]])
-        #
-        # lgs2 = Source(optBand=param['opticalBand'],
-        #               magnitude=param['magnitude'],
-        #               altitude=param['srcAltitude'],
-        #               coordinates=[param['lgs_zenith'][1], param['lgs_azimuth'][1]])
-        #
-        # lgs3 = Source(optBand=param['opticalBand'],
-        #               magnitude=param['magnitude'],
-        #               altitude=param['srcAltitude'],
-        #               coordinates=[param['lgs_zenith'][2], param['lgs_azimuth'][2]])
-        #
-        # lgs4 = Source(optBand=param['opticalBand'],
-        #               magnitude=param['magnitude'],
-        #               altitude=param['srcAltitude'],
-        #               coordinates=[param['lgs_zenith'][3], param['lgs_azimuth'][3]])
-        #
-        # lgsAst = [lgs1, lgs2, lgs3, lgs4]
-        # lgsAst = lgsAst[:param["n_lgs"]] # retain only the n_lgs first sources
+
 
         # %% science targets
         sciSrc = Source(optBand='K',
@@ -110,14 +77,6 @@ class AOSystem:
         # %% -----------------------     ATMOSPHERE   ----------------------------------
 
         # create the Atmosphere object
-        # atm = Atmosphere(telescope=tel,
-        #                  r0=param['r0']*np.cos(param['zenithAngleInDeg']*np.pi/180) ** (3 / 5),
-        #                  L0=param['L0'],
-        #                  windSpeed=param['windSpeed'],
-        #                  fractionalR0=param['fractionnalR0'],
-        #                  windDirection=param['windDirection'],
-        #                  altitude=np.array(param['altitude'])*np.cos(param['zenithAngleInDeg']*np.pi/180),
-        #                  param=param)
 
         atm = Atmosphere(telescope=tel,
                          r0=param['r0'],
@@ -127,10 +86,6 @@ class AOSystem:
                          windDirection=param['windDirection'],
                          altitude=np.array(param['altitude']),
                          param=param)
-        # initialize atmosphere
-        atm.initializeAtmosphere(tel)
-
-        atm.update()
 
 
         # %% -----------------------     DEFORMABLE MIRROR   ----------------------------------
@@ -140,11 +95,9 @@ class AOSystem:
 
         # set coordinate vector to match the Keck actuator location
         # TODO make path relative
-        # act_mask = np.loadtxt("./aodata/act_mask_keck.txt", dtype=str, delimiter=",")
-        # breakpoint()
         act_mask = np.loadtxt(f'{param["path2parms"]}act_mask_keck.txt', dtype=str, delimiter=",")
         act_mask = act_mask.astype(bool)
-        # breakpoint()
+
 
         X, Y = tools.meshgrid(param['nActuator'], tel.D, offset_x=0.0, offset_y=0.0, stretch_x=1, stretch_y=1)
         act_mask = np.pad(act_mask, pad_width=2, mode='constant', constant_values=0)
@@ -167,25 +120,20 @@ class AOSystem:
 
         dm.act_mask = act_mask
         tel.resolution = resolution
-        # breakpoint()
         # %% -----------------------     Wave Front Sensor   ----------------------------------
-        #pdb.set_trace()
         wfs = ShackHartmann(telescope=tel,
                             nSubap=param['nSubaperture'],
                             lightRatio=0.5)
 
         # Load the subap_mask
         # TODO make path relative
-        # subap_mask = np.loadtxt("./aodata/subap_mask_keck.txt", dtype=str, delimiter=",")
         subap_mask = np.loadtxt(f'{param["path2parms"]}{param["sub_aperture_mask"]}', dtype=str, delimiter=",")
 
         subap_mask = subap_mask.astype(bool)
         wfs.valid_subapertures = subap_mask
         wfs.subap_mask = subap_mask #Force existence of subap_mask variable for backwards compatibility
 
-        # %% scale r0 in case of different wavelengths
-        # wvlScale = lgs1.wavelength / atm.wavelength
-        # atm.r0 = atm.r0 * wvlScale ** (1.2)
+
         # %% LGS-to-LGS cross-covariance matrix
 
 

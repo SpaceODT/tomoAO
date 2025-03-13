@@ -19,7 +19,7 @@ def tomographic_reconstructor_phase_space(aoSys, weight, alpha, Cn=None, debug=F
     if debug:
         return rec
 
-    return rec.mmseReconstructor[0]
+    return rec._R_unfiltered
 
 
 

@@ -5,9 +5,6 @@ Created on Tue Apr 18 15:25:00 2023
 
 @author: ccorreia@spaceodt.net
 """
-import pdb
-import time
-
 
 import numpy as np
 try:
@@ -23,15 +20,11 @@ from scipy.linalg import svd
 from scipy.special import gamma, kv
 from scipy.linalg import inv
 import aotools
-import logging
 from scipy.signal import convolve2d
 import os
 # Library needed to interact with configuration files.
 import configparser
 import math
-
-
-log = logging.getLogger('')
 
 import dataclasses
 
@@ -66,14 +59,11 @@ class ReconMatrices:
         KL_matrix = KL_matrix.reshape((nb_actuators, nb_actuators))
 
         # load the invcov matrix
-        #invcov = np.fromfile(config_vars['path2parms'] + config_vars['invcov'], dtype=np.float32)
-        #invcov = invcov.reshape((nb_actuators, nb_actuators))
         invcov = readFromBinary(config_vars['path2parms'] + config_vars['invcov'], (nb_actuators, nb_actuators),">f")
 
         # load the ttp (tip-tilt-piston-removal) matrix
-        #ttp = np.fromfile(config_vars['path2parms'] + config_vars['ttp'], dtype=np.float32)
-        #ttp = ttp.reshape((nb_actuators, nb_actuators))
         ttp = readFromBinary(config_vars['path2parms'] + config_vars['ttp'], (nb_actuators, nb_actuators),">f")
+
         # load the sub_actuator_map matrix
         sub_actuator_map = np.fromfile(config_vars['path2parms'] + config_vars['sub_actuator_map'], dtype=np.int8)
         sub_actuator_map = sub_actuator_map.reshape((nb_sub_apertures, nb_actuators)).T
@@ -84,9 +74,8 @@ class ReconMatrices:
         actuator_actuator_map = actuator_actuator_map.reshape((nb_actuators, nb_actuators))
 
         # load the zern_to_cent matrix
-        #zern_to_cent = np.fromfile(config_vars['path2parms'] + config_vars['zernToCent'], dtype=np.float32)
-        #zern_to_cent = zern_to_cent.reshape((2 * nb_sub_apertures, 10))
         zern_to_cent = readFromBinary(config_vars['path2parms'] + config_vars['zernToCent'], (2*nb_sub_apertures,10),">f")
+
         # extract the focus-to-centroids
         foccents = zern_to_cent[:, 3]
 
@@ -98,8 +87,7 @@ class ReconMatrices:
         act_mask = np.loadtxt(config_vars['path2parms'] + config_vars['actuator_mask'], dtype=str,
                               delimiter=",").astype(bool)
 
-        #import pdb
-        #pdb.set_trace()
+
         return cls(weight0=weight0, KL_matrix=KL_matrix,
                    invcov=invcov, ttp=ttp, sub_actuator_map=sub_actuator_map,
                    actuator_actuator_map=actuator_actuator_map,
@@ -122,30 +110,6 @@ def readFromBinary(filename, expected_shape,file_format):
     # put back in correct shape
     return data_vector.reshape(expected_shape)
 
-
-# def load_from_ini(config_file, ao_mode=None, config_dir=os.path.dirname(__file__)):
-#     # Instantiate configparser
-#     config = configparser.ConfigParser()
-#     config.optionxform = str
-#     # Path of the configuration file is given as the "configdir" argument
-#     # Read the configuration file
-#     config.read(config_dir + config_file)
-#
-#     # Get the section of the config file containing the reconstructor
-#     # parameters for the chosen AO_MODE
-#     if ao_mode is None:
-#         ao_mode = 'default'
-#
-#     parm = dict(config[ao_mode].items())
-#     # breakpoint()
-#     #print(parm)
-#     # for key, value in parm.items():
-#     #     print(key, value)
-#     #     print(eval(value))
-#     #     print("----------------")
-#     # breakpoint()
-#     return {key: eval(value) for key, value in
-#             parm.items()}  # returns a dictionary with entries in specified data types
 
 
 def idx2idx(idx_valid, mask):
@@ -180,7 +144,6 @@ def tomask(index):
 
 
 def bessel_i(n, x, terms=10):
-    """Compute the modified Bessel function of the first kind I_n(x) using a power series expansion using CuPy."""
     x = cp.asarray(x, dtype=cp.float64)
     sum_result = cp.zeros_like(x, dtype=cp.float64)
 
@@ -191,7 +154,6 @@ def bessel_i(n, x, terms=10):
     return sum_result
 
 def bessel_k(n, x, terms=10):
-    """Compute the modified Bessel function of the second kind K_n(x) using CuPy, supporting both scalar and array inputs."""
     x = cp.asarray(x, dtype=cp.float64)
 
     if cp.any(x <= 0):
@@ -217,7 +179,6 @@ def covariance_matrix(rho, r0, L0):
 
     else:
         out[index] = cst * u ** (5 / 6) * kv(5 / 6, u)
-    # print("Using fast version")
 
     return out
 
@@ -260,10 +221,8 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
     # Compute the discrete reconstruction mask from the subap_mask passed on as input
 
     recIdx = reconstructionGrid(mask, os, dm_space)
-    # breakpoint()
     if src1 == src2:  # auto-covariance matrix
 
-        # crossCovCell = cellCovMatrix(tel, atm, src1, src2, recIdx)
         arcsec2radian = np.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
@@ -322,7 +281,6 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
         crossCovMat = np.vstack(crossCovMat)
         return crossCovMat
     else:
-        # crossCovCell = cellCovMatrix(tel, atm, src1, src2, recIdx)
         # breakpoint()
         arcsec2radian = np.pi / 180 / 3600
         nPts = recIdx.shape[0]
@@ -333,7 +291,6 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                 for l in range(0, len(atm.altitude)):
                     # CROSS COVARIANCE BETWEEN TWO STARS
                     # STAR 1
-                    # breakpoint()
                     coneCompressionFactor = 1 - \
                                             atm.altitude[l] / src1[i].altitude
                     x = src1[i].coordinates[0] * atm.altitude[l] * \
@@ -345,7 +302,6 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                     X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho1 = X + 1j * Y
-                    # breakpoint()
                     # STAR 2
                     coneCompressionFactor = 1 - \
                                             atm.altitude[l] / src2[j].altitude
@@ -360,10 +316,8 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                     rho2 = X + 1j * Y
 
                     dist = dists(rho1.T, rho2.T)  # not sure why, using the transpose makes it equal to Matlab's
-                    # breakpoint()
                     phaseCovElem[:, :, l] = covariance_matrix(
                         dist, atm.r0, atm.L0) * atm.fractionalR0[l]
-                # breakpoint()
                 crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
                                      recIdx.flatten("F"), :][:, recIdx.flatten("F")]
         crossCovMat = np.block(
@@ -381,7 +335,6 @@ def cellCovMatrix(tel, atm, src1, src2, recIdx):
 def sparseGradientMatrixAmplitudeWeighted_old(validLenslet, amplMask, os=2):
     import numpy as np
     from scipy.sparse import csr_matrix
-    # breakpoint()
     validLenslet = np.ones(validLenslet.shape, dtype=bool)
     nLenslet = validLenslet.shape[0]
 
@@ -458,7 +411,6 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
 
     nLenslet = validLenslet.shape[0]
 
-    # osFactor = 2
     if amplMask is None:
         amplMask = np.ones((os * nLenslet + 1, os * nLenslet + 1))
 
@@ -488,7 +440,6 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
     j_y = np.zeros(9 * nValidLenslet_)
     s_y = np.zeros(9 * nValidLenslet_)
 
-    # i e j estavam trocados
     jMap0, iMap0 = np.meshgrid(np.arange(0, 3), np.arange(0, 3))
 
     gridMask = np.zeros((nMap, nMap), dtype=bool)
@@ -507,7 +458,6 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
                 numIllum = np.sum(a)
 
                 if numIllum == (os + 1) ** 2:
-                    # print(iOffset, jOffset)
                     iOffset = os * (iLenslet)
                     i_x[u] = i0x + iOffset
                     j_x[u] = j0x + jOffset
@@ -589,65 +539,6 @@ def tsvd(G, no_svd_to_truncate=0, U=None, S=None, V=None):
     invS = np.diag(1.0 / np.diag(S))
     invS = invS[:keep, :keep]
     return Vred @ invS @ Ured.T
-
-
-
-
-
-
-
-# def assembleRecon(obj, runtime_valid_subap_mask, runtime_valid_act_mask, minioning_flag='ON'):
-#     print('rec_assembler')
-#
-#     n_channels = len(obj.guideStar)
-#
-#     actPTTremMat, slopesTTremMat, slopeTTFProj = modalRemovalMatrices(K1, weight_vector, nLgs=n_lgs)
-#
-#
-#     # TODO This code is executed as many times as there are active channels. Consider removing it to outside the function
-#     mergedMask = np.sum(runtime_valid_subap_mask, -1)
-#     compound_validSubapMask = obj.unfilteredSubapMask.copy()
-#     if runtime_valid_subap_mask.ndim == 3:
-#         if minioning_flag == 'ON':
-#             compound_validSubapMask[mergedMask == n_channels] = 1
-#             compound_validSubapMask[mergedMask != n_channels] = 0
-#         else:
-#             compound_validSubapMask[mergedMask >= 1] = 1
-#     else:
-#         compound_validSubapMask = runtime_valid_subap_mask.copy()
-#
-#     # load pre-computed matrices
-#     sub_actuator_map = obj.static_maps_matrices.sub_actuator_map
-#     actuator_actuator_map = obj.static_maps_matrices.actuator_actuator_map
-#
-#     act_minion_matrix = computeMinioning(obj.unfilteredSubapMask[compound_validSubapMask].copy(),
-#                                               sub_actuator_map, actuator_actuator_map)
-#
-#     #actuator_ttp_removal, slope_tt_removal, pinv_slope_rem_tt, pinv_slope_rem_focus = \
-#     #    [list(t) for t in
-#     #     zip(*[modalRemovalMatrices(obj, runtime_valid_subap_mask[:, :, k].flatten().reshape((-1, 1)),
-#     #                                   runtime_valid_act_mask, weight_vector=obj.weight_vector[k],
-#     #                                   compound_validSubapMask=compound_validSubapMask) for k in range(n_channels)]
-#     #         )
-#     #     ]
-#
-#
-#     R_unfiltered = obj.R_unfiltered  # computes the unfiltered reconstructor
-#
-#     # if minioning_flag is set to False, act_minion_matrix = I
-#     if minioning_flag == 'OFF':
-#         act_minion_matrix = np.eye(act_minion_matrix.shape)
-#
-#     R_assembly = concatenateReconMatrices(R_unfiltered, actuator_ttp_removal, act_minion_matrix,
-#                                           slope_tt_removal, pinv_slope_rem_tt,
-#                                           pinv_slope_rem_focus, n_channels)
-#     return R_assembly
-#
-#
-
-
-
-
 
 
 
