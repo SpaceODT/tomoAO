@@ -20,16 +20,17 @@ except:
 import matplotlib.pyplot as plt
 from scipy.sparse import block_diag
 
-
-DEBUG = False
-
+from time import time
 
 
 
 
-class LinearMMSE:
-    def __init__(self,aoSys, weight_vector=None, intMat=None, static_maps_matrices=None, alpha=None,
-                 model='zonal', noiseCovariance=None, lag=0, weightOptimDir=-1, os=2, zernikeMode=None, ordering='keck', minioning_flag='ON'):
+
+
+class tomoReconstructor:
+    def __init__(self, aoSys, weight_vector=None, alpha=None,
+                 model='zonal', noise_covariance=None, lag=0,
+                 weightOptimDir=-1, os=2, zernikeMode=None):
         """Initialization function.
 
         Instantiate a LinearMMSE reconstructor
@@ -47,13 +48,13 @@ class LinearMMSE:
         :param weightOptimDir: a vector with the relative weights for each optimization direction [float]
         :param os: the over-sampling factor [1, 2, 4] (default=2) to apply to the reconstructed phase w.r.t the inpup slopes-maps [int]
         :param zernikeMode: zernike modes used for modal removal sampled with the required os factor [ndarray]
-        :param ordering: keck(default)|sim Whereas to interleave the x-y slopes (keck ordering) or to leave allX-then-allY for simulations
 
         :return: This class instantiates the direct matrices and generates an MMSE reconstructor
         """
 
         self.tel = aoSys.tel
         self.atmModel = aoSys.atm
+
 
         if isinstance(aoSys.lgsAst, list):
             # It's already a list, no need to convert
@@ -62,6 +63,7 @@ class LinearMMSE:
             # Convert to a list
             self.guideStar = [aoSys.lgsAst]
         self.nGuideStar = len(self.guideStar)
+
 
         if isinstance(aoSys.mmseStar, list):
             # It's already a list, no need to convert
@@ -75,35 +77,37 @@ class LinearMMSE:
 
         self.dm = aoSys.dm
 
-        self.outputRecGrid = aoSys.outputReconstructiongrid
-
-        self.unfilteredSubapMask = aoSys.subap_mask
-
-        self.runtime_valid_subap_mask = tools.check_subap_mask_dims(self.unfilteredSubapMask, len(self.guideStar))
-        self.model = model
-        self.zernikeMode = zernikeMode
-
-        self._noiseCovariance = noiseCovariance
-
-
+        self._alpha = alpha
         self._lag = lag
         self.weightOptimDir = weightOptimDir
         self.os = os
-        self.ordering = ordering
-        self.mmseReconstructor = None
+        self.model = model
+        self.zernikeMode = zernikeMode
 
-        self.weight_vector = weight_vector
+        self.outputRecGrid = aoSys.outputReconstructiongrid
 
-        self.static_maps_matrices = static_maps_matrices
+        #All valid subap mask
+        self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
 
-        if static_maps_matrices is not None:
-            self.inv_cov_mat = static_maps_matrices.invcov
+        #Valid subap mask
+        self._filtered_subap_mask = aoSys.filtered_subap_mask
 
-        if intMat is not None:
-            self.intMat = intMat
+        if weight_vector is None:
+            self.weight_vector = self.computeDefaultWeightVector()
+        else:
+            self.weight_vector = weight_vector
 
-        self.weight_vector = weight_vector
-        self.alpha = alpha
+        if noise_covariance is None:
+            self.noise_covariance = self.computeDefaultNoiseCovariance()
+        else:
+            self.noise_covariance = noise_covariance
+
+
+
+
+
+
+        # self._weight_vector = weight_vector
         if isinstance(self.weightOptimDir, str):
             if self.weightOptimDir.lower() == 'avr' or self.weightOptimDir.lower() == 'average':
                 self.weightOptimDir = 1 / self.nMmseStar * np.ones(self.nMmseStar)
@@ -119,60 +123,16 @@ class LinearMMSE:
         wvlScale = self.guideStar[0].wavelength / self.atmModel.wavelength
         self.atmModel.r0 = self.atmModel.r0 * wvlScale ** 1.2
 
-        # %% Discrete gradient matrix
-        # In case the validSubapMask is different per WFS channel iterate
-        if len(self.unfilteredSubapMask) == self.nGuideStar:
-            blk_Gamma = []
-            for i in range(self.nGuideStar):
 
-                validSubapMask = self.unfilteredSubapMask[i]  # Replace this with the code to get a different validSubapMask for each iteration
+        # Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfiltered_subap_mask, amplMask=None,
+        #                                                               os=self.os)
+        #
+        # Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
+        # gridMask = [gridMask] * self.nGuideStar
+        # Gamma = [np.asarray(mat) for mat in Gamma]
+        # self.Gamma = block_diag(Gamma)
+        # self.gridMask = gridMask
 
-                # Call the function with different validSubapMask
-                #TODO: Aqui tem que entrar a matriz com todas válidas
-                Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(validSubapMask, amplMask=None, os=self.os)
-
-                # reorder the rows of Gamma to provide x-y slopes instead of the allX-allY used in simulations
-                if self.ordering == 'keck':
-                    N = np.count_nonzero(validSubapMask)
-                    idx = np.arange(N * 2).reshape(2, N)
-                    idx = idx.transpose().reshape(-1)
-                    # Reorder the rows of the matrix
-                    Gamma = Gamma.tocsr()[idx, :]
-
-                # Append the results to the list
-                blk_Gamma.append((Gamma, gridMask))
-
-            # Create a block diagonal matrix from the Gamma results
-            blk_diag_Gamma = block_diag(blk_Gamma)
-            self.Gamma = blk_diag_Gamma
-
-        else:  # otherwise it's the same for all, in which case one Gradient Matrix is computed and block_diag()
-
-            Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfilteredSubapMask, amplMask=None, os=self.os)
-            #pdb.set_trace()
-            # breakpoint()
-            self.Gamma_single = Gamma.copy()
-            self.ordering = None
-            # reorder the rows of Gamma to provide x-y slopes instead of the allX-allY used in simulations
-            if self.ordering == 'keck':
-                # block of code extracting y-x-y-x for compatibility with Keck's IM!!!
-                N = np.count_nonzero(self.unfilteredSubapMask)
-                Gamma_copy = Gamma.copy()
-                # Gamma_dense = Gamma_tmp.todense()
-                Gamma = np.zeros(Gamma_copy.shape)
-                Gamma[0::2] = Gamma_copy[N:, :]
-                Gamma[1::2] = Gamma_copy[0:N, :]
-
-
-
-            Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
-            gridMask = [gridMask] * self.nGuideStar
-
-        # TODO: the scaling of the discrete gradient matrix needs to be worked out
-
-        Gamma = [np.asarray(mat) for mat in Gamma]
-        self.Gamma = block_diag(Gamma)
-        self.gridMask = gridMask
 
         # %% FITTING MATRIX
         if self.dm is not None:
@@ -185,167 +145,152 @@ class LinearMMSE:
         else:
             self.fittingMatrix = None
 
+        # %% RECONSTRUCTOR
+        self.buildReconstructor()
 
 
-
-        # %% LGS-to-science cross-covariance matrix
-        self.Cox = []
-        for i in range(len(self.mmseStar)):
-            res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                                self.unfilteredSubapMask, self.os)
-            self.Cox.append(res)
-
-
-        # %% LGS-to-LGS cross-covariance matrix
-        self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                 self.unfilteredSubapMask, self.os)
-
-        # %%
-        self.solveLmmse()
-
-        # %%
-
-        self._R_unfiltered = self.fittingMatrix @ self.mmseReconstructor[0]
 
 
     @property
-    def noiseCovariance(self):
-        return self._noiseCovariance
+    def noise_covariance(self):
+        return self._noise_covariance
 
-    @noiseCovariance.setter
-    def noiseCovariance(self, val):
+    @noise_covariance.setter
+    def noise_covariance(self, val):
         if val is not None:
             if self.model == 'modal' and isinstance(val, (int, float)):
-                n_mode = len(self.zernikeMode)
-                val = [[val] * n_mode] * n_mode
-                val = [[val[i][j] if i == j else 0 for j in range(n_mode)] for i in range(n_mode)]
+                    n_mode = len(self.zernikeMode)
+                    val = [[val] * n_mode] * n_mode
+                    val = [[val[i][j] if i == j else 0 for j in range(n_mode)] for i in range(n_mode)]
             elif isinstance(val, (int, float)):
                 val = val * np.eye(self.Gamma.shape[0])
-
-            self._noiseCovariance = val
-            self.solveLmmse()
-
-
-    def getNoiseCovariance(self):
-        if self._noiseCovariance is None:
-            return 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten(order='F') + 1e-8))
         else:
-            return self._noiseCovariance
+            #Default noise covariance matrix TODO: Evaluate if this should be the default setting
+            val = 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten(order='F') + 1e-8))
+
+        self._noise_covariance = val
 
 
-    # %%
-    def solveLmmse(self):
-        print(" -->> mmse solver!")
-
-        m_Cox = self.Cox
-        m_Cxx = self.Cxx
-        m_Cn = self.getNoiseCovariance()
-        m_Gamma = self.Gamma
-
-        if cuda_available:
-            m_Cox = cp.asarray(m_Cox)
-            m_Cxx = cp.asarray(m_Cxx)
-            m_Cn = cp.asarray(m_Cn)
-            m_Gamma = cp.asarray(m_Gamma.todense())
-
-        if self.weightOptimDir == -1:
-            m_mmseReconstructor = [None] * self.nMmseStar
-            for k in range(self.nMmseStar):
-
-                if cuda_available:
-                    m_mmseReconstructor[k] = (m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)).get()
-                else:
-                    m_mmseReconstructor[k] = m_Cox[k] @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
+    def computeDefaultNoiseCovariance(self):
+        self.noise_covariance = None
 
 
-        else:  # weighted sum over all the optimisation directions
-            # This code uses the ss stars to compute a weighted average tomographic
-            # reconstructor over all of them
-            m_mmseReconstructor = [None]
-            m_CoxWAvr = np.sum([m_Cox[k] * self.weightOptimDir[k] for k in range(self.nMmseStar)], axis=0)
-            m_mmseReconstructor[0] = m_CoxWAvr @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
-        self.mmseReconstructor = m_mmseReconstructor
+    @property
+    def weight_vector(self):
+        return self._weight_vector
 
-    def mtimes(self, data):
-        return self.mmseReconstructor @ data
+    @weight_vector.setter
+    def weight_vector(self, val):
 
-    def update(self, runtime_valid_subap_mask, runtime_valid_act_mask=None, update_matrices=None):
+        if val is not None:
+            self._weight_vector = val
 
-        # if not set by user, then the runtime_valid_act_mask is the global one for this DM
-        if runtime_valid_act_mask is None:
-            runtime_valid_act_mask = np.array([True] * len(self.dm.validAct.flatten())).astype(bool)
-
-        runtime_valid_subap_mask = tools.check_subap_mask_dims(runtime_valid_subap_mask, len(self.guideStar))
-
-        runtime_valid_subap_mask = tools.toggle(runtime_valid_subap_mask)
-
-        nSubap = self.unfilteredSubapMask.shape[0]
-
-        ids = []
-        idx = []
-        maxValidSubap = np.count_nonzero(self.unfilteredSubapMask)
-        refRecGrid = tools.reconstructionGrid(self.unfilteredSubapMask, self.os)
-        for k in range(len(self.guideStar)):
-            maskS = runtime_valid_subap_mask[:, k][self.unfilteredSubapMask.flatten()]
-            res = np.where(maskS)[0]
-            ids.append(np.concatenate((res, res + maxValidSubap)) + k * 2 * maxValidSubap)
-
-            # Compute the discrete reconstruction mask from the subap_mask passed on as input
-            maskX = tools.reconstructionGrid(np.reshape(runtime_valid_subap_mask[:, k], (nSubap, nSubap)), self.os)
-            res = np.where(maskX[refRecGrid])[0]
-            idx.append(res + k * np.count_nonzero(refRecGrid))
-
-        # convert lists to arrays
-        ids = np.concatenate(ids)
-        idx = np.concatenate(idx)
-
-        # valid DM actuators
-
-        maskA = runtime_valid_act_mask[self.dm.validAct.reshape(-1, 1)]
-        ida = np.where(maskA)[0]
-
-        print(" -->> mmse updator!")
-
-        m_Cxx = self.Cxx[idx][:, idx]
-        m_Cn = self._noiseCovariance
-
-        # Check if m_Cn is a scalar (int, float, etc.)
-        if np.isscalar(m_Cn):
-            # Handle the case where it's a scalar, by creating a diagonal matrix
-            m_Cn = m_Cn * np.eye(len(ids))
         else:
-            # Assuming m_Cn is a NumPy array or similar
-            m_Cn = m_Cn[ids, ids]
-        m_Gamma = self.Gamma.toarray()
-        m_Gamma = m_Gamma[ids][:, idx]
+            # #Default weight vector TODO: Evaluate if this should be the default setting
+            weight_vector = np.ones([2 * np.count_nonzero(self.unfiltered_subap_mask), self.nGuideStar])
+            filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask]
+            filteredAllValidMask = np.tile(filteredAllValidMask, 2)
+            weight_vector[~filteredAllValidMask] = 0
+            self._weight_vector = weight_vector
 
-        if self.weightOptimDir == -1:
-            m_mmseReconstructor = [None] * self.nMmseStar
-            for k in range(self.nMmseStar):
-                m_Cox = self.Cox[k][:, idx]
-                m_mmseReconstructor[k] = m_Cox @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
-        else:  # weighted sum over all the optimisation directions
-            # This code uses the ss stars to compute a weighted average tomographic
-            # reconstructor over all of them
-            m_mmseReconstructor = [None]
-            m_Cox = self.Cox
-            m_CoxWAvr = np.sum([m_Cox[k][:, idx] * self.weightOptimDir[k] for k in range(self.nMmseStar)], axis=0)
-            m_mmseReconstructor[0] = m_CoxWAvr @ m_Gamma.T @ np.linalg.pinv(m_Gamma @ m_Cxx @ m_Gamma.T + m_Cn)
 
-        self.mmseReconstructor = m_mmseReconstructor
+    def computeDefaultWeightVector(self):
+        self.weight_vector = None
 
-        self.fittingMatrix = np.linalg.pinv(self.dm.modes[self.outputRecGrid.flatten()][:, ida], rcond=1e-3)
 
-        # TODO the reshape from 2D to 3D ought to be made with the toggle_frame function yet it is not working
-        runtime_valid_subap_mask = tools.toggle(runtime_valid_subap_mask)
-        # sz = np.sqrt(validSubapMask.shape[0]).astype(int)
-        # validSubapMask = np.reshape(validSubapMask, (sz, sz, 4), order='F')
+    @property
+    def filtered_subap_mask(self):
+        return self._filtered_subap_mask
 
-        self._R_unfiltered = self.fittingMatrix @ self.mmseReconstructor[0]
+    @filtered_subap_mask.setter
+    def filtered_subap_mask(self, val):
+        self._filtered_subap_mask = val
+
+
+    @property
+    def alpha(self):
+        return self._alpha
+
+    @alpha.setter
+    def alpha(self, val):
+        self._alpha = val
 
 
     @property
     def R_unfiltered(self):
         return self._R_unfiltered
+
+    def buildCovarianceMatrices(self):
+        print("Building the covariance matrices")
+        self.Cox = []
+        for i in range(len(self.mmseStar)):
+            res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
+                                                self.unfiltered_subap_mask, self.os)
+            self.Cox.append(res)
+
+
+        self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
+                                                 self.unfiltered_subap_mask, self.os)
+
+
+    def buildGamma(self):
+        print("Building Gamma")
+        Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfiltered_subap_mask, amplMask=None,
+                                                                      os=self.os)
+
+        Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
+        gridMask = [gridMask] * self.nGuideStar
+        Gamma = [np.asarray(mat) for mat in Gamma]
+        self.Gamma = block_diag(Gamma)
+        self.gridMask = gridMask
+
+
+    def buildReconstructor(self):
+        print("Using GPU" if cuda_available else "GPU not available, using CPU")
+
+        start = time()
+        self.buildGamma()
+        print(f"Took {time()-start} seconds to build Gamma")
+
+
+        start = time()
+        self.buildCovarianceMatrices()
+        print(f"Took {time()-start} seconds to build the covariance matrices")
+
+
+        print("Building the reconstructor")
+        start = time()
+
+
+        if cuda_available:
+            self.Cox = cp.asarray(self.Cox)
+            self.Cxx = cp.asarray(self.Cxx)
+            self.noise_covariance = cp.asarray(self.noise_covariance)
+            self.Gamma = cp.asarray(self.Gamma)
+
+        if self.weightOptimDir == -1:
+            self.Reconstructor = [None] * self.nMmseStar
+
+            for k in range(self.nMmseStar):
+
+                if cuda_available:
+                    self.Reconstructor[k] = (
+                                self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
+                else:
+                    self.Reconstructor[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
+
+        else:  # weighted sum over all the optimisation directions
+            # This code uses the ss stars to compute a weighted average tomographic
+            # reconstructor over all of them
+            self.Reconstructor = [None]
+            CoxWAvr = np.sum([ self.Cox[k] * self.weightOptimDir[k] for k in range(self.nMmseStar)], axis=0)
+            self.Reconstructor[0] = CoxWAvr @  self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @  self.Gamma.T + self.noise_covariance)
+
+
+        self._R_unfiltered = self.fittingMatrix @ self.Reconstructor[0]
+        print(f"Took {time()-start} seconds to build the reconstructor")
+
+
+
 
 

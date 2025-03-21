@@ -38,41 +38,45 @@ class AOSystem:
         tel.apply_spiders(angle, thickness_spider, offset_X=offset_X, offset_Y=offset_Y)
 
 
-        data = loadmat(f'{param["path2parms"]}tel_pupil.mat')
-        pupil = data['pup']  # Extract the array
-
-        tel.pupil = pupil
+        # data = loadmat(f'{param["path2matrices"]}tel_pupil.mat')
+        # pupil = data['pup']  # Extract the array
+        #
+        # tel.pupil = pupil
         # %% -----------------------     NGS   ----------------------------------
         # create the Source object
         ngs = Source(optBand=param['opticalBand'],
                      magnitude=param['magnitude'],
                      altitude=param['srcAltitude'])
+
         # combine the NGS to the telescope using '*' operator:
         ngs * tel
         # %% LGS objects
-        # TODO replace this static code with a for loop to generate as many lgsGs as instructed by the user
-        lgsAst = []
-        ntemp = param['n_lgs']
-        for kLgs in range(param["n_lgs"]):
-            lgs = Source(optBand=param['opticalBand'],
+        # lgsAst = []
+        # # ntemp = param['n_lgs']
+        # for kLgs in range(param["n_lgs"]):
+        #     lgs = Source(optBand=param['opticalBand'],
+        #               magnitude=param['lgs_magnitude'],
+        #               altitude=param['lgs_altitude'],
+        #               coordinates=[param['lgs_zenith'][kLgs], param['lgs_azimuth'][kLgs]])
+        #     lgsAst.append(lgs)
+
+        lgsAst = [Source(optBand=param['opticalBand'],
                       magnitude=param['lgs_magnitude'],
                       altitude=param['lgs_altitude'],
                       coordinates=[param['lgs_zenith'][kLgs], param['lgs_azimuth'][kLgs]])
-            lgsAst.append(lgs)
-
-
+                  for kLgs in range(param["n_lgs"])]
 
         # %% science targets
         sciSrc = Source(optBand='K',
                         magnitude=0,
-                        altitude=np.Inf,
+                        altitude=np.inf,
                         coordinates=[0, 0])
 
         # %% science targets
 
         recCalSrc = Source(optBand='Na',
                            magnitude=0,
-                           altitude=np.Inf,
+                           altitude=np.inf,
                            coordinates=[0, 0])
         # %% -----------------------     ATMOSPHERE   ----------------------------------
 
@@ -94,13 +98,13 @@ class AOSystem:
 
 
         # set coordinate vector to match the Keck actuator location
-        # TODO make path relative
-        act_mask = np.loadtxt(f'{param["path2parms"]}act_mask_keck.txt', dtype=str, delimiter=",")
-        act_mask = act_mask.astype(bool)
-
+        act_mask = np.loadtxt(f'{param["path2matrices"]}{param["actuator_mask"]}', dtype=bool, delimiter=",")
+        if act_mask.shape[0] != param['nActuator']:
+            act_mask = np.pad(act_mask, pad_width=int(param['nSubapExtra']/2), mode='constant', constant_values=0)
 
         X, Y = tools.meshgrid(param['nActuator'], tel.D, offset_x=0.0, offset_y=0.0, stretch_x=1, stretch_y=1)
-        act_mask = np.pad(act_mask, pad_width=2, mode='constant', constant_values=0)
+
+
         coordinates = np.array([X[act_mask], Y[act_mask]]).T
 
         self.dm_coordinates = coordinates
@@ -111,7 +115,7 @@ class AOSystem:
         #tel.resolution = 2 * param['nSubaperture'] + 1
         tel.resolution = param['dm_resolution']# this is to compute a low-resolution DM IF, where low-resolution is the wavefront reconstruction resolution
         dm = DeformableMirror(telescope=tel,
-                              nSubap=param['nSubaperture'],
+                              nSubap=param['nSubaperture']+param['nSubapExtra'],
                               mechCoupling=param['mechanicalCoupling'],
                               misReg=misReg,
                               coordinates=coordinates,
@@ -122,24 +126,38 @@ class AOSystem:
         tel.resolution = resolution
         # %% -----------------------     Wave Front Sensor   ----------------------------------
         wfs = ShackHartmann(telescope=tel,
-                            nSubap=param['nSubaperture'],
+                            nSubap=param['nSubaperture']+param['nSubapExtra'],
                             lightRatio=0.5)
 
-        # Load the subap_mask
-        # TODO make path relative
-        subap_mask = np.loadtxt(f'{param["path2parms"]}{param["sub_aperture_mask"]}', dtype=str, delimiter=",")
 
-        subap_mask = subap_mask.astype(bool)
-        wfs.valid_subapertures = subap_mask
-        wfs.subap_mask = subap_mask #Force existence of subap_mask variable for backwards compatibility
+        unfiltered_subap_mask = np.loadtxt(f'{param["path2matrices"]}{param["unfiltered_subap_mask"]}',
+                                           dtype=bool, delimiter=",")
+
+        if unfiltered_subap_mask.shape[0] != param['nSubaperture']+param['nSubapExtra']:
+            unfiltered_subap_mask = np.pad(unfiltered_subap_mask,
+                                           pad_width=int(param['nSubapExtra']/2),
+                                           mode='constant',
+                                           constant_values=0)
 
 
-        # %% LGS-to-LGS cross-covariance matrix
+        filtered_subap_mask = np.loadtxt(f'{param["path2matrices"]}{param["filtered_subap_mask"]}',
+                                         dtype=bool, delimiter=",")
+
+        if filtered_subap_mask.shape[0] != param['nSubaperture'] + param['nSubapExtra']:
+            filtered_subap_mask = np.pad(filtered_subap_mask,
+                                         pad_width=int(param['nSubapExtra']/2),
+                                         mode='constant',
+                                         constant_values=0)
+
+
+        wfs.valid_subapertures = unfiltered_subap_mask
+        wfs.subap_mask = unfiltered_subap_mask #Force existence of subap_mask variable for backwards compatibility
+
 
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
 
-        outputReconstructiongrid = tools.reconstructionGrid(subap_mask, param['os'], dm_space=False)
+        outputReconstructiongrid = tools.reconstructionGrid(unfiltered_subap_mask, param['os'], dm_space=False)
 
 
         # %% -----------------------     Self Allocation   ----------------------------------
@@ -155,5 +173,6 @@ class AOSystem:
         self.outputReconstructiongrid = outputReconstructiongrid
         self.sciSrc = sciSrc
         self.act_mask = act_mask
-        self.subap_mask = subap_mask
+        self.unfiltered_subap_mask = unfiltered_subap_mask
+        self.filtered_subap_mask = filtered_subap_mask
 

@@ -1,5 +1,5 @@
 import PyTomo.tools.tomography_tools as tools
-from PyTomo.Reconstruction.reconClassType import LinearMMSE
+from PyTomo.Reconstruction.reconClassType import tomoReconstructor
 
 from scipy.linalg import block_diag
 
@@ -14,7 +14,7 @@ except:
 
 def tomographic_reconstructor_phase_space(aoSys, weight, alpha, Cn=None, debug=False):
 
-    rec = LinearMMSE(aoSys, alpha=alpha, weight_vector=weight, os=2, noiseCovariance=Cn)
+    rec = tomoReconstructor(aoSys, alpha=alpha, weight_vector=weight, os=2, noiseCovariance=Cn)
 
     if debug:
         return rec
