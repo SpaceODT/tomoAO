@@ -8,7 +8,6 @@ import PyTomo.tools.tomography_tools as tools
 
 # %% USE OOPAO, define a geometry and compute the cross-covariance matrix for all the layers
 import numpy as np
-from scipy.io import loadmat
 
 from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
@@ -51,14 +50,7 @@ class AOSystem:
         # combine the NGS to the telescope using '*' operator:
         ngs * tel
         # %% LGS objects
-        # lgsAst = []
-        # # ntemp = param['n_lgs']
-        # for kLgs in range(param["n_lgs"]):
-        #     lgs = Source(optBand=param['opticalBand'],
-        #               magnitude=param['lgs_magnitude'],
-        #               altitude=param['lgs_altitude'],
-        #               coordinates=[param['lgs_zenith'][kLgs], param['lgs_azimuth'][kLgs]])
-        #     lgsAst.append(lgs)
+
 
         lgsAst = [Source(optBand=param['opticalBand'],
                       magnitude=param['lgs_magnitude'],
