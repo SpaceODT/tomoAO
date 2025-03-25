@@ -1,5 +1,7 @@
 import PyTomo.tools.tomography_tools as tools
 from PyTomo.Reconstruction.reconClassType import tomoReconstructor
+from PyTomo.IO import load_from_ini
+from PyTomo.Simulation import AOSystem
 
 from scipy.linalg import block_diag
 
@@ -12,9 +14,13 @@ except:
     cuda_available = False
 
 
-def tomographic_reconstructor_phase_space(aoSys, weight, alpha, Cn=None, debug=False):
+def tomographic_reconstructor_phase_space(config_file, config_dir, alpha, weight_vector=None, noise_covariance=None, debug=False):
 
-    rec = tomoReconstructor(aoSys, alpha=alpha, weight_vector=weight, os=2, noiseCovariance=Cn)
+    config_vars = load_from_ini(config_file, ao_mode="MLAO", config_dir=config_dir)
+
+    aoSys = AOSystem(config_vars)
+
+    rec = tomoReconstructor(aoSys, alpha=alpha, weight_vector=weight_vector, noise_covariance=noise_covariance, os=2)
 
     if debug:
         return rec

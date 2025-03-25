@@ -107,7 +107,7 @@ class AOSystem:
         #tel.resolution = 2 * param['nSubaperture'] + 1
         tel.resolution = param['dm_resolution']# this is to compute a low-resolution DM IF, where low-resolution is the wavefront reconstruction resolution
         dm = DeformableMirror(telescope=tel,
-                              nSubap=param['nSubaperture']+param['nSubapExtra'],
+                              nSubap=param['nSubaperture'],
                               mechCoupling=param['mechanicalCoupling'],
                               misReg=misReg,
                               coordinates=coordinates,
@@ -118,14 +118,14 @@ class AOSystem:
         tel.resolution = resolution
         # %% -----------------------     Wave Front Sensor   ----------------------------------
         wfs = ShackHartmann(telescope=tel,
-                            nSubap=param['nSubaperture']+param['nSubapExtra'],
+                            nSubap=param['nSubaperture'],
                             lightRatio=0.5)
 
 
         unfiltered_subap_mask = np.loadtxt(param["unfiltered_subap_mask"],
                                            dtype=bool, delimiter=",")
 
-        if unfiltered_subap_mask.shape[0] != param['nSubaperture']+param['nSubapExtra']:
+        if unfiltered_subap_mask.shape[0] != param['nSubaperture']:
             unfiltered_subap_mask = np.pad(unfiltered_subap_mask,
                                            pad_width=int(param['nSubapExtra']/2),
                                            mode='constant',
@@ -135,7 +135,7 @@ class AOSystem:
         filtered_subap_mask = np.loadtxt(param["filtered_subap_mask"],
                                          dtype=bool, delimiter=",")
 
-        if filtered_subap_mask.shape[0] != param['nSubaperture'] + param['nSubapExtra']:
+        if filtered_subap_mask.shape[0] != param['nSubaperture']:
             filtered_subap_mask = np.pad(filtered_subap_mask,
                                          pad_width=int(param['nSubapExtra']/2),
                                          mode='constant',
