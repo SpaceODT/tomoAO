@@ -6,7 +6,7 @@ Python package with atmospheric tomography generic functions and tools
 1. Install OOPAO
     ```sh
     git clone https://github.com/cheritier/OOPAO
-    pip install 'path to OOPAO'
+    pip install -e 'path to OOPAO'
     ```
 
 2. Install cupy according to your cuda version (Optional)
@@ -25,7 +25,7 @@ Python package with atmospheric tomography generic functions and tools
     Or clone the repository
     ```sh
     git clone https://github.com/cmcorreia/PyTomo
-    pip install 'path to PyTomo'
+    pip install -e 'path to PyTomo'
     ```
     
 
