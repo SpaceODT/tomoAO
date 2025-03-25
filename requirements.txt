@@ -1,0 +1,3 @@
+aotools
+numpy
+astropy
