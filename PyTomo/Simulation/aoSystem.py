@@ -90,7 +90,7 @@ class AOSystem:
 
 
         # set coordinate vector to match the Keck actuator location
-        act_mask = np.loadtxt(f'{param["path2matrices"]}{param["actuator_mask"]}', dtype=bool, delimiter=",")
+        act_mask = np.loadtxt(param["actuator_mask"], dtype=bool, delimiter=",")
         if act_mask.shape[0] != param['nActuator']:
             act_mask = np.pad(act_mask, pad_width=int(param['nSubapExtra']/2), mode='constant', constant_values=0)
 
@@ -122,7 +122,7 @@ class AOSystem:
                             lightRatio=0.5)
 
 
-        unfiltered_subap_mask = np.loadtxt(f'{param["path2matrices"]}{param["unfiltered_subap_mask"]}',
+        unfiltered_subap_mask = np.loadtxt(param["unfiltered_subap_mask"],
                                            dtype=bool, delimiter=",")
 
         if unfiltered_subap_mask.shape[0] != param['nSubaperture']+param['nSubapExtra']:
@@ -132,7 +132,7 @@ class AOSystem:
                                            constant_values=0)
 
 
-        filtered_subap_mask = np.loadtxt(f'{param["path2matrices"]}{param["filtered_subap_mask"]}',
+        filtered_subap_mask = np.loadtxt(param["filtered_subap_mask"],
                                          dtype=bool, delimiter=",")
 
         if filtered_subap_mask.shape[0] != param['nSubaperture'] + param['nSubapExtra']:
