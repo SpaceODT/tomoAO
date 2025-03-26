@@ -3,3 +3,4 @@
 import tomoAO.IO
 import tomoAO.Simulation
 import tomoAO.Reconstruction
+from .version import __version__

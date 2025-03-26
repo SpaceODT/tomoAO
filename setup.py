@@ -22,7 +22,7 @@ def read(*paths, **kwargs):
 
 setup(
     name = 'tomoAO',
-    version = '0.0.1',
+    version=open("tomoAO/version.py").read().split('=')[1].strip().strip('"'),
     license = 'MIT',
     author = 'SpaceODT',
     description='Python package with atmospheric tomography generic functions and tools',
