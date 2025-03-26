@@ -1,12 +1,11 @@
-# PyTomo
+# tomoAO
 Python package with atmospheric tomography generic functions and tools
 
 ## Installation
 
 1. Install OOPAO
     ```sh
-    git clone https://github.com/cheritier/OOPAO
-    pip install -e 'path to OOPAO'
+    pip install git+https://github.com/cheritier/OOPAO
     ```
 
 2. Install cupy according to your cuda version (Optional)
@@ -17,15 +16,15 @@ Python package with atmospheric tomography generic functions and tools
     pip install cupy-cuda12x
     ```
 
-3. Install PyTomo via pip
+3. Install tomoAO via pip
     ```sh
-    pip install PyTomo
+    pip install tomoAO
     ```
 
     Or clone the repository
     ```sh
     git clone https://github.com/cmcorreia/PyTomo
-    pip install -e 'path to PyTomo'
+    pip install -e 'path to tomoAO'
     ```
     
 

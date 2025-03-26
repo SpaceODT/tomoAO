@@ -2,6 +2,6 @@
 /dist/
 /PyTomo.egg-info/
 
-PyTomo/__pycache__/
+tomoAO/__pycache__/
 *.py[cod]
 *$py.class

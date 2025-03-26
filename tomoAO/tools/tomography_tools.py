@@ -7,6 +7,7 @@ Created on Tue Apr 18 15:25:00 2023
 """
 
 import numpy as np
+cuda_available = False
 try:
     import cupy as cp
     if cp.cuda.is_available():

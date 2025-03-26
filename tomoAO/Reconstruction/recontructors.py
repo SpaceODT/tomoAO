@@ -1,11 +1,12 @@
-import PyTomo.tools.tomography_tools as tools
-from PyTomo.Reconstruction.reconClassType import tomoReconstructor
-from PyTomo.IO import load_from_ini
-from PyTomo.Simulation import AOSystem
+import tomoAO.tools.tomography_tools as tools
+from tomoAO.Reconstruction.reconClassType import tomoReconstructor
+from tomoAO.IO import load_from_ini
+from tomoAO.Simulation import AOSystem
 
 from scipy.linalg import block_diag
 
 import numpy as np
+cuda_available = False
 try:
     import cupy as cp
     if cp.cuda.is_available():

@@ -5,10 +5,11 @@ Created on Tue Apr 18 15:25:00 2023
 """
 
 
-import PyTomo.tools.tomography_tools as tools
+import tomoAO.tools.tomography_tools as tools
 
 
 import numpy as np
+cuda_available = False
 try:
     import cupy as cp
     if cp.cuda.is_available():
@@ -241,7 +242,7 @@ class tomoReconstructor:
         Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
         gridMask = [gridMask] * self.nGuideStar
         Gamma = [np.asarray(mat) for mat in Gamma]
-        self.Gamma = block_diag(Gamma)
+        self.Gamma = block_diag(Gamma).todense()
         self.gridMask = gridMask
 
 

@@ -4,7 +4,7 @@ Created on Tue Apr 18 15:25:00 2023
 @author: ccorreia@spaceodt.net
 """
 
-import PyTomo.tools.tomography_tools as tools
+import tomoAO.tools.tomography_tools as tools
 
 # %% USE OOPAO, define a geometry and compute the cross-covariance matrix for all the layers
 import numpy as np
