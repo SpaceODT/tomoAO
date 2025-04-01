@@ -260,8 +260,12 @@ class tomoReconstructor:
 
 
         print("Building the reconstructor")
-        start = time()
+        start_init = time()
 
+        # print(f"Cox -> {type(self.Cox)}")
+        # print(f"Cxx -> {type(self.Cxx)}")
+        # print(f"noise_covariance -> {type(self.noise_covariance)}")
+        # print(f"Gamma -> {type(self.Gamma)}")
 
         if cuda_available:
             self.Cox = cp.asarray(self.Cox)
@@ -269,14 +273,21 @@ class tomoReconstructor:
             self.noise_covariance = cp.asarray(self.noise_covariance)
             self.Gamma = cp.asarray(self.Gamma)
 
+        # print(f"First part took {time() - start_init} seconds")
+
         if self.weightOptimDir == -1:
             self.Reconstructor = [None] * self.nMmseStar
 
             for k in range(self.nMmseStar):
 
                 if cuda_available:
-                    self.Reconstructor[k] = (
-                                self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
+                    start = time()
+
+
+                    self.Reconstructor[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
+                    # self.Reconstructor[k] = (cp.dot(self.Cox[k], self.Gamma.T, cp.linalg.pinv(cp.dot(self.Gamma, self.Cxx, self.Gamma.T ) + self.noise_covariance))).get()
+                    print(f"Second part took {time() - start} seconds")
+
                 else:
                     self.Reconstructor[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
 
@@ -289,7 +300,7 @@ class tomoReconstructor:
 
 
         self._R_unfiltered = self.fittingMatrix @ self.Reconstructor[0]
-        print(f"Took {time()-start} seconds to build the reconstructor")
+        print(f"Took {time()-start_init} seconds to build the reconstructor")
 
 
 
