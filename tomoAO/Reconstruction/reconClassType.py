@@ -225,12 +225,21 @@ class tomoReconstructor:
         print("Building the covariance matrices")
         self.Cox = []
         for i in range(len(self.mmseStar)):
-            res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                                self.unfiltered_subap_mask, self.os)
+            if cuda_available:
+                res = tools.spatioAngularCovarianceMatrix_gpu(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
+                                                          self.unfiltered_subap_mask, self.os)
+            else:
+                res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
+                                                    self.unfiltered_subap_mask, self.os)
             self.Cox.append(res)
 
 
-        self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
+        if cuda_available:
+            self.Cxx = tools.spatioAngularCovarianceMatrix_gpu(self.tel, self.atmModel, self.guideStar, self.guideStar,
+                                                           self.unfiltered_subap_mask, self.os)
+
+        else:
+            self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
                                                  self.unfiltered_subap_mask, self.os)
 
 
