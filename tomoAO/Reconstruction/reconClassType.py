@@ -25,33 +25,50 @@ from time import time
 
 
 
-
-
-
 class tomoReconstructor:
+    """
+    Instantiates a LinearMMSE reconstructor.
+
+    Parameters
+    ----------
+    tel : Telescope
+        Telescope object.
+    atmModel : Atmosphere
+        Atmosphere object.
+    guideStar : list of Source
+        List of guide star objects.
+    mmseStar : list of Source
+        List of target star objects.
+    dm : DeformableMirror
+        Deformable mirror object.
+    outputRecGrid : ndarray
+        A mask where the phase is to be reconstructed.
+    validSubapMask : bool
+        A multi-dimensional mask with the valid subapertures per WFS channel.
+    model : str, optional
+        Whether 'zonal' (default) or modal.
+    noiseCovariance : float or ndarray, optional
+        The noise covariance matrix as a scalar or a matrix.
+    lag : float, optional
+        The AO system lag that can be compensated through tomography.
+    weightOptimDir : float, optional
+        A vector with the relative weights for each optimization direction.
+    os : int, optional
+        The over-sampling factor [1, 2, 4] (default=2) to apply to the reconstructed phase w.r.t the input slopes-maps.
+    zernikeMode : ndarray, optional
+        Zernike modes used for modal removal sampled with the required `os` factor.
+
+    Returns
+    -------
+    None
+        This class instantiates the direct matrices and generates an MMSE reconstructor.
+    """
+
     def __init__(self, aoSys, weight_vector=None, alpha=None,
                  model='zonal', noise_covariance=None, lag=0,
                  weightOptimDir=-1, os=2, zernikeMode=None):
-        """Initialization function.
 
-        Instantiate a LinearMMSE reconstructor
 
-        :param tel: Telescope object [Telescope]
-        :param atmModel: atmosphere object [Atmosphere]
-        :param guideStar: a list of guide star objects [list of Source objects]
-        :param mmseStar: a list of target star objects [list of Source objects]
-        :param dm: deformable mirror object [Deformable Mirror]
-        :param outputRecGrid: a mask where the phase is to be reconstructed
-        :param validSubapMask: a multi-dim mask with the valid subapertures per WFS channel [bool]
-        :param model: whether 'zonal' (default) or modal [str]
-        :param noiseCovariance: the noise covariance matrix as a scalar [float] or a matrix [ndarray]
-        :param lag: the AO system lag that can be compensated through tomography [float]
-        :param weightOptimDir: a vector with the relative weights for each optimization direction [float]
-        :param os: the over-sampling factor [1, 2, 4] (default=2) to apply to the reconstructed phase w.r.t the inpup slopes-maps [int]
-        :param zernikeMode: zernike modes used for modal removal sampled with the required os factor [ndarray]
-
-        :return: This class instantiates the direct matrices and generates an MMSE reconstructor
-        """
 
         self.tel = aoSys.tel
         self.atmModel = aoSys.atm
@@ -291,7 +308,6 @@ class tomoReconstructor:
 
                 if cuda_available:
                     start = time()
-
 
                     self.Reconstructor[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
                     # self.Reconstructor[k] = (cp.dot(self.Cox[k], self.Gamma.T, cp.linalg.pinv(cp.dot(self.Gamma, self.Cxx, self.Gamma.T ) + self.noise_covariance))).get()
