@@ -16,39 +16,16 @@ except:
     cuda_available = False
 
 from scipy.sparse import csr_matrix
-from scipy.special import gamma, kv
+from scipy.special import kv, gamma
 
 import math
 
 from time import time
 
-#
-# def bessel_i2(n, x, terms=10):
-#     x = cp.asarray(x, dtype=cp.float64)
-#     sum_result = cp.zeros_like(x, dtype=cp.float64)
-#
-#     for m in range(terms):
-#         term = (1 / (math.factorial(m) * math.gamma(m + n + 1))) * (x / 2) ** (2 * m + n)
-#         sum_result += term
-#
-#     return sum_result
-#
-# def bessel_k2(n, x, terms=10):
-#     print("old")
-#     start = time()
-#     x = cp.asarray(x, dtype=cp.float64)
-#
-#     if cp.any(x <= 0):
-#         raise ValueError("x must be positive for K_n(x)")
-#
-#     i_n = bessel_i(n, x, terms)
-#     i_neg_n = bessel_i(-n, x, terms)
-#
-#     print(f"Bessel part took {time() - start} seconds\n")
-#
-#     result = (np.pi / 2) * (i_neg_n - i_n) / np.sin(n * cp.pi)
-#
-#     return result
+
+from math import gamma, pow, sin, pi
+from numba import njit, prange
+
 
 
 bessel_i_kernel_code = r'''
@@ -99,12 +76,50 @@ def bessel_k(n, x, terms=10):
     return (cp.pi / 2) * (i_neg_n - i_n) / cp.sin(n * cp.pi)
 
 if cuda_available:
-    first_part_cst = (24 * gamma(6 / 5) / 5) ** (5 / 6) * (gamma(11 / 6) / (2 ** (5 / 6) * np.pi ** (8 / 3)))
+    first_part_cst = (24 * gamma(6 / 5) / 5) ** (5 / 6) * (gamma(11 / 6) / (2 ** (5 / 6) * cp.pi ** (8 / 3)))
     first_part_out = (24 * gamma(6 / 5) / 5) ** (5 / 6) * (gamma(11 / 6) * gamma(5 / 6) / (2 * cp.pi ** (8 / 3)))
+else:
+    first_part_cst = (24 * gamma(6 / 5) / 5) ** (5 / 6) * (gamma(11 / 6) / (2 ** (5 / 6) * np.pi ** (8 / 3)))
+    first_part_out = (24 * gamma(6 / 5) / 5) ** (5 / 6) * (gamma(11 / 6) * gamma(5 / 6) / (2 * np.pi ** (8 / 3)))
+
+
+@njit(parallel=True)
+def bessel_i_cpu(x, n, terms):
+    size = x.shape[0]
+    result = np.zeros(size, dtype=np.float64)
+
+    for idx in prange(size):
+        xi = x[idx]
+        coeff = pow(xi / 2.0, n) / gamma(n + 1.0)
+        term = coeff
+        sum_result = term
+        x_sq_half = pow(xi / 2.0, 2)
+
+        for m in range(1, terms):
+            term *= x_sq_half / (m * (m + n))
+            sum_result += term
+
+        result[idx] = sum_result
+
+    return result
+
+
+def bessel_k_cpu(n, x, terms=20):
+    x = np.asarray(x, dtype=np.float64)
+    i_n = bessel_i_cpu(x, n, terms)
+    i_neg_n = bessel_i_cpu(x, -n, terms)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        k = (pi / 2.0) * (i_neg_n - i_n) / np.sin(n * pi)
+        # Avoid division by zero for integer n
+        k[np.isclose(np.sin(n * pi), 0.0)] = np.nan
+    return k
+
+
+
+
 
 def covariance_matrix(rho, r0, L0):
-    # print(f"covaraiance matrix\n")
-    # start_init = time()
 
     L0r0ratio = (L0 / r0) ** (5 / 3)
     cst = first_part_cst * L0r0ratio
@@ -125,24 +140,24 @@ def covariance_matrix(rho, r0, L0):
         out[index] = cst * u ** (5 / 6) * bessel_k(5 / 6, u, terms=10)
         out = out
     else:
-        out[index] = cst * u ** (5 / 6) * kv(5 / 6, u)
+        out[index] = cst * u ** (5 / 6) * bessel_k_cpu(5/6, u, 10)
+
 
     return out
 
 
-def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
+def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0, order="C"):
     # Compute the discrete reconstruction mask from the subap_mask passed on as input
 
     recIdx = reconstructionGrid(mask, os, dm_space)
     if src1 == src2:  # auto-covariance matrix
-
+        
         arcsec2radian = np.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
             for j in range(0, len(src2)):
                 if j >= i:
-
                     phaseCovElem = np.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                     for l in range(0, len(atm.altitude)):
                         # CROSS COVARIANCE BETWEEN TWO STARS
@@ -174,14 +189,17 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                                         stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                         rho2 = X + 1j * Y
 
-                        dist = dists(rho1.T, rho2.T)  # not sure why, using the transpose makes it equal to Matlab's
+                        
+                        
+                        dist = dists(rho1, rho2, order=order) 
 
+          
                         phaseCovElem[:, :, l] = covariance_matrix(
                             dist, atm.r0, atm.L0) * atm.fractionalR0[l]
 
-
                     crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
-                                         recIdx.flatten("F"), :][:, recIdx.flatten("F")]
+                                         recIdx.flatten(order=order), :][:, recIdx.flatten(order=order)]
+
 
         # populate the off-diagonal blocks left null in the previous step
         for i in range(0, len(src1)):
@@ -194,12 +212,15 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
         crossCovMat = np.vstack(crossCovMat)
         return crossCovMat
     else:
-        # breakpoint()
+
+
         arcsec2radian = np.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
             for j in range(0, len(src2)):
+
+
                 phaseCovElem = np.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                 for l in range(0, len(atm.altitude)):
                     # CROSS COVARIANCE BETWEEN TWO STARS
@@ -228,11 +249,15 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho2 = X + 1j * Y
 
-                    dist = dists(rho1.T, rho2.T)  # not sure why, using the transpose makes it equal to Matlab's
+                    dist = dists(rho1, rho2, order=order)  
+
                     phaseCovElem[:, :, l] = covariance_matrix(
                         dist, atm.r0, atm.L0) * atm.fractionalR0[l]
+
                 crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
-                                     recIdx.flatten("F"), :][:, recIdx.flatten("F")]
+                                     recIdx.flatten(order=order), :][:, recIdx.flatten(order=order)]
+                
+
         crossCovMat = np.block(
             [[crossCovCell[i, j] for j in range(len(src2))] for i in range(len(src1))])
         if len(src1) > 1:
@@ -373,15 +398,13 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
         return crossCovMat
 
 
-def dists(rho1, rho2):
+def dists(rho1, rho2, order="C"):
     if cuda_available:
         return cp.abs(cp.subtract.outer(rho1.flatten(), rho2.flatten()))
 
     else:
-        return np.abs(np.subtract.outer(rho1.flatten(), rho2.flatten()))
+        return np.abs(np.subtract.outer(rho1.flatten(order=order), rho2.flatten(order=order)))
 
-    # dist = cp.abs(cp.subtract.outer(rho1.flatten(), rho2.flatten()))
-    # return dist
 
 
 def meshgrid(nPts, D, offset_x=0, offset_y=0, stretch_x=1, stretch_y=1):
@@ -415,7 +438,7 @@ def reconstructionGrid(mask, os, dm_space=False):
 
 
 
-def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
+def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2, order="C"):
 
     nLenslet = validLenslet.shape[0]
 
@@ -485,8 +508,9 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
     Gamma = csr_matrix((np.concatenate((s_x, s_y)), (v.flatten(), np.concatenate((indx, indy)))),
                        shape=(2 * nValidLenslet_, nMap ** 2))
     Gamma = Gamma.todense()
-    Gamma = Gamma[:, gridMask.flatten("F")]
-
+    
+    
+    Gamma = Gamma[:, gridMask.flatten(order=order)] 
     return Gamma, gridMask
 
 

@@ -66,7 +66,7 @@ class tomoReconstructor:
 
     def __init__(self, aoSys, weight_vector=None, alpha=None,
                  model='zonal', noise_covariance=None, lag=0,
-                 weightOptimDir=-1, os=2, zernikeMode=None):
+                 weightOptimDir=-1, os=2, zernikeMode=None, indexation="xxyy", order="C"):
 
 
 
@@ -101,6 +101,9 @@ class tomoReconstructor:
         self.os = os
         self.model = model
         self.zernikeMode = zernikeMode
+        self.indexation = indexation
+        self.order = order
+
 
         self.outputRecGrid = aoSys.outputReconstructiongrid
 
@@ -125,7 +128,6 @@ class tomoReconstructor:
 
 
 
-        # self._weight_vector = weight_vector
         if isinstance(self.weightOptimDir, str):
             if self.weightOptimDir.lower() == 'avr' or self.weightOptimDir.lower() == 'average':
                 self.weightOptimDir = 1 / self.nMmseStar * np.ones(self.nMmseStar)
@@ -142,19 +144,11 @@ class tomoReconstructor:
         self.atmModel.r0 = self.atmModel.r0 * wvlScale ** 1.2
 
 
-        # Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfiltered_subap_mask, amplMask=None,
-        #                                                               os=self.os)
-        #
-        # Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
-        # gridMask = [gridMask] * self.nGuideStar
-        # Gamma = [np.asarray(mat) for mat in Gamma]
-        # self.Gamma = block_diag(Gamma)
-        # self.gridMask = gridMask
-
 
         # %% FITTING MATRIX
         if self.dm is not None:
-            iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
+            iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten(order=self.order),]
+
 
             if cuda_available:
                 self.fittingMatrix = cp.linalg.pinv(cp.asarray(iFittingMatrix), rcond=1e-3).get()
@@ -184,7 +178,7 @@ class tomoReconstructor:
                 val = val * np.eye(self.Gamma.shape[0])
         else:
             #Default noise covariance matrix TODO: Evaluate if this should be the default setting
-            val = 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten(order='F') + 1e-8))
+            val = 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten(order=self.order) + 1e-8))
 
         self._noise_covariance = val
 
@@ -206,9 +200,16 @@ class tomoReconstructor:
         else:
             # #Default weight vector TODO: Evaluate if this should be the default setting
             weight_vector = np.ones([2 * np.count_nonzero(self.unfiltered_subap_mask), self.nGuideStar])
-            filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask]
+            
+            if self.order == "F":
+                filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask]
+                
+            elif self.order == "C":
+                filteredAllValidMask = self.filtered_subap_mask[self.unfiltered_subap_mask]
+            
             filteredAllValidMask = np.tile(filteredAllValidMask, 2)
-            weight_vector[~filteredAllValidMask] = 0
+            if np.any(filteredAllValidMask == 0):
+                weight_vector[~filteredAllValidMask] = 0
             self._weight_vector = weight_vector
 
 
@@ -247,7 +248,7 @@ class tomoReconstructor:
                                                           self.unfiltered_subap_mask, self.os)
             else:
                 res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                                    self.unfiltered_subap_mask, self.os)
+                                                    self.unfiltered_subap_mask, self.os, order=self.order)
             self.Cox.append(res)
 
 
@@ -257,13 +258,13 @@ class tomoReconstructor:
 
         else:
             self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                 self.unfiltered_subap_mask, self.os)
+                                                 self.unfiltered_subap_mask, self.os, order=self.order)
 
 
     def buildGamma(self):
         print("Building Gamma")
         Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfiltered_subap_mask, amplMask=None,
-                                                                      os=self.os)
+                                                                      os=self.os, order=self.order)
 
         Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
         gridMask = [gridMask] * self.nGuideStar
@@ -288,10 +289,6 @@ class tomoReconstructor:
         print("Building the reconstructor")
         start_init = time()
 
-        # print(f"Cox -> {type(self.Cox)}")
-        # print(f"Cxx -> {type(self.Cxx)}")
-        # print(f"noise_covariance -> {type(self.noise_covariance)}")
-        # print(f"Gamma -> {type(self.Gamma)}")
 
         if cuda_available:
             self.Cox = cp.asarray(self.Cox)
@@ -299,7 +296,7 @@ class tomoReconstructor:
             self.noise_covariance = cp.asarray(self.noise_covariance)
             self.Gamma = cp.asarray(self.Gamma)
 
-        # print(f"First part took {time() - start_init} seconds")
+
 
         if self.weightOptimDir == -1:
             self.Reconstructor = [None] * self.nMmseStar
@@ -310,10 +307,10 @@ class tomoReconstructor:
                     start = time()
 
                     self.Reconstructor[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
-                    # self.Reconstructor[k] = (cp.dot(self.Cox[k], self.Gamma.T, cp.linalg.pinv(cp.dot(self.Gamma, self.Cxx, self.Gamma.T ) + self.noise_covariance))).get()
                     print(f"Second part took {time() - start} seconds")
 
                 else:
+                    
                     self.Reconstructor[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
 
         else:  # weighted sum over all the optimisation directions
@@ -325,6 +322,7 @@ class tomoReconstructor:
 
 
         self._R_unfiltered = self.fittingMatrix @ self.Reconstructor[0]
+
         print(f"Took {time()-start_init} seconds to build the reconstructor")
 
 

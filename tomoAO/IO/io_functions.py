@@ -18,13 +18,7 @@ def load_from_ini(config_file, ao_mode=None, config_dir=os.path.dirname(__file__
         ao_mode = 'default'
 
     parm = dict(config[ao_mode].items())
-    # breakpoint()
-    #print(parm)
-    # for key, value in parm.items():
-    #     print(key, value)
-    #     print(eval(value))
-    #     print("----------------")
-    # breakpoint()
+
     return {key: eval(value) for key, value in
             parm.items()}  # returns a dictionary with entries in specified data types
 
