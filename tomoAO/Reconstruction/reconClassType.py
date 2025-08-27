@@ -9,7 +9,6 @@ import tomoAO.tools.tomography_tools as tools
 
 
 import numpy as np
-cuda_available = False
 try:
     import cupy as cp
     if cp.cuda.is_available():
@@ -20,6 +19,8 @@ except:
 
 import matplotlib.pyplot as plt
 from scipy.sparse import block_diag
+
+import scipy
 
 from time import time
 
@@ -113,6 +114,8 @@ class tomoReconstructor:
         #Valid subap mask
         self._filtered_subap_mask = aoSys.filtered_subap_mask
 
+        self.unfiltered_act_mask = aoSys.unfiltered_act_mask
+
         if weight_vector is None:
             self.weight_vector = self.computeDefaultWeightVector()
         else:
@@ -147,7 +150,8 @@ class tomoReconstructor:
 
         # %% FITTING MATRIX
         if self.dm is not None:
-            iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten(order=self.order),]
+            iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
+            # iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
 
 
             if cuda_available:
@@ -178,7 +182,7 @@ class tomoReconstructor:
                 val = val * np.eye(self.Gamma.shape[0])
         else:
             #Default noise covariance matrix TODO: Evaluate if this should be the default setting
-            val = 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten(order=self.order) + 1e-8))
+            val = 1e-3 * self.alpha * np.diag(1 / (self.weight_vector.flatten("F") + 1e-8))
 
         self._noise_covariance = val
 
@@ -199,14 +203,12 @@ class tomoReconstructor:
 
         else:
             # #Default weight vector TODO: Evaluate if this should be the default setting
-            weight_vector = np.ones([2 * np.count_nonzero(self.unfiltered_subap_mask), self.nGuideStar])
-            
-            if self.order == "F":
-                filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask]
-                
-            elif self.order == "C":
-                filteredAllValidMask = self.filtered_subap_mask[self.unfiltered_subap_mask]
-            
+            # weight_vector = np.ones([2 * np.count_nonzero(self.unfiltered_subap_mask), self.nGuideStar])
+            # filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask.T]
+
+            weight_vector = np.ones([2 * np.count_nonzero(self.filtered_subap_mask), self.nGuideStar])
+            filteredAllValidMask = self.filtered_subap_mask.T[self.filtered_subap_mask.T]
+
             filteredAllValidMask = np.tile(filteredAllValidMask, 2)
             if np.any(filteredAllValidMask == 0):
                 weight_vector[~filteredAllValidMask] = 0
@@ -248,7 +250,7 @@ class tomoReconstructor:
                                                           self.unfiltered_subap_mask, self.os)
             else:
                 res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                                    self.unfiltered_subap_mask, self.os, order=self.order)
+                                    self.unfiltered_subap_mask, self.os)
             self.Cox.append(res)
 
 
@@ -258,14 +260,13 @@ class tomoReconstructor:
 
         else:
             self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                 self.unfiltered_subap_mask, self.os, order=self.order)
+                                                        self.unfiltered_subap_mask, self.os)
 
 
     def buildGamma(self):
         print("Building Gamma")
-        Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.unfiltered_subap_mask, amplMask=None,
-                                                                      os=self.os, order=self.order)
-
+        Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.filtered_subap_mask, amplMask=None,
+                                                                      os=self.os)
         Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
         gridMask = [gridMask] * self.nGuideStar
         Gamma = [np.asarray(mat) for mat in Gamma]
@@ -299,29 +300,79 @@ class tomoReconstructor:
 
 
         if self.weightOptimDir == -1:
-            self.Reconstructor = [None] * self.nMmseStar
+            self.RecStatSA = [None] * self.nMmseStar
 
             for k in range(self.nMmseStar):
 
                 if cuda_available:
                     start = time()
 
-                    self.Reconstructor[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
+                    self.RecStatSA[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
                     print(f"Second part took {time() - start} seconds")
 
                 else:
                     
-                    self.Reconstructor[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
+                    self.RecStatSA[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
 
         else:  # weighted sum over all the optimisation directions
             # This code uses the ss stars to compute a weighted average tomographic
             # reconstructor over all of them
-            self.Reconstructor = [None]
+            self.RecStatSA = [None]
             CoxWAvr = np.sum([ self.Cox[k] * self.weightOptimDir[k] for k in range(self.nMmseStar)], axis=0)
-            self.Reconstructor[0] = CoxWAvr @  self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @  self.Gamma.T + self.noise_covariance)
+            self.RecStatSA[0] = CoxWAvr @  self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @  self.Gamma.T + self.noise_covariance)
 
 
-        self._R_unfiltered = self.fittingMatrix @ self.Reconstructor[0]
+        self.reconstructor = np.array(self.fittingMatrix @ self.RecStatSA[0]) * self.guideStar[0].wavelength
+
+
+        self.filtering_matrix = tools.get_filtering_matrix(self.unfiltered_subap_mask.copy(),
+                                                           self.filtered_subap_mask.copy(), 
+                                                           self.nGuideStar)
+
+        self.reconstructor = np.array(self.reconstructor@self.filtering_matrix)
+
+
+        if self.order == "C":
+            self.signal_permutation_matrix = tools.get_signal_permutation_matrix(self.unfiltered_subap_mask, self.nGuideStar)
+            self.dm_permutation_matrix = tools.get_dm_permutation_matrix(self.unfiltered_act_mask)
+            self.reconstructor = np.array(self.dm_permutation_matrix@self.reconstructor@self.signal_permutation_matrix)
+
+
+        if self.indexation == "xyxy":
+            xyxy_permutation_matrix = tools.get_xyxy_permutation_matrix(self.reconstructor.shape[-1])
+            self.reconstructor = self.reconstructor @ xyxy_permutation_matrix
+
+        # unfiltered_mask = self.unfiltered_subap_mask.copy()
+        # filtered_mask = self.filtered_subap_mask.copy()
+
+        # M = np.zeros((np.count_nonzero(filtered_mask), np.count_nonzero(unfiltered_mask)))
+
+        # unfiltered_mask_arr = unfiltered_mask.flatten("F") 
+        # filtered_mask_arr = filtered_mask.flatten("F") 
+
+        # count_row = 0
+        # count_col = 0
+
+
+        # for i in range(len(unfiltered_mask_arr)):
+        #     if unfiltered_mask_arr[i] and filtered_mask_arr[i]:
+        #         M[count_row, count_col] = 1
+        #         count_row += 1
+        #         count_col +=1
+
+        #     elif unfiltered_mask_arr[i]:
+        #         count_col +=1
+        
+        # M = scipy.linalg.block_diag(*[M]*2)
+
+        # M = scipy.linalg.block_diag(*[M]*self.nGuideStar)
+
+        # self.reconstructor = np.array(self.reconstructor@M)
+
+
+        
+
+
 
         print(f"Took {time()-start_init} seconds to build the reconstructor")
 

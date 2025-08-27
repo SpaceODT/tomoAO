@@ -133,10 +133,20 @@ class AOSystem:
                                   coordinates=kwargs["dm"].coordinates,
                                   pitch=kwargs["dm"].pitch)
 
+            dm.unfiltered_act_mask = kwargs["dm"].unfiltered_act_mask
+
             # TODO: non fried geometry not supported yet
 
             # Re-instate original telescope resolution
             tel.resolution = param["resolution"]
+
+            # from scipy.io import loadmat
+
+            # dm_modes_matlab_data = loadmat('/home/joaomonteiro/Desktop/temp/dm_modes.mat')
+
+            # dm_modes_matlab = np.array(dm_modes_matlab_data['dm_modes'].todense())
+
+            # dm.modes = dm_modes_matlab
 
 
         # lgsAst**tel*dm
@@ -175,8 +185,8 @@ class AOSystem:
 
         else:
             wfs = kwargs["wfs"]
-            unfiltered_subap_mask = wfs.valid_subapertures.copy()
-            filtered_subap_mask = wfs.valid_subapertures.copy()
+            unfiltered_subap_mask = wfs.unfiltered_subap_mask.copy()
+            filtered_subap_mask = wfs.filtered_subap_mask.copy()
 
             wfs.subap_mask = unfiltered_subap_mask
 
@@ -184,7 +194,11 @@ class AOSystem:
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
 
-        outputReconstructiongrid = tools.reconstructionGrid(unfiltered_subap_mask, param['os'], dm_space=False)
+        # all_valid_subapertures = wfs.all_valid_subapertures.copy()
+        # outputReconstructiongrid = tools.reconstructionGrid(unfiltered_subap_mask, param['os'], dm_space=False)
+        outputReconstructiongrid = tools.reconstructionGrid(filtered_subap_mask, param['os'], dm_space=False)
+        
+        # outputReconstructiongrid = tools.reconstructionGrid(all_valid_subapertures, param['os'], dm_space=False)
 
 
         # %% -----------------------     Self Allocation   ----------------------------------
@@ -200,4 +214,4 @@ class AOSystem:
         self.sciSrc = sciSrc
         self.unfiltered_subap_mask = unfiltered_subap_mask
         self.filtered_subap_mask = filtered_subap_mask
-
+        self.unfiltered_act_mask = dm.unfiltered_act_mask

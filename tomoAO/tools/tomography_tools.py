@@ -7,7 +7,6 @@ Created on Tue Apr 18 15:25:00 2023
 """
 
 import numpy as np
-cuda_available = False
 try:
     import cupy as cp
     if cp.cuda.is_available():
@@ -17,6 +16,7 @@ except:
 
 from scipy.sparse import csr_matrix
 from scipy.special import kv, gamma
+from scipy.linalg import block_diag
 
 import math
 
@@ -146,7 +146,7 @@ def covariance_matrix(rho, r0, L0):
     return out
 
 
-def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0, order="C"):
+def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
     # Compute the discrete reconstruction mask from the subap_mask passed on as input
 
     recIdx = reconstructionGrid(mask, os, dm_space)
@@ -191,14 +191,14 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0, or
 
                         
                         
-                        dist = dists(rho1, rho2, order=order) 
-
+                        dist = dists(rho1.T, rho2.T) 
+ 
           
                         phaseCovElem[:, :, l] = covariance_matrix(
                             dist, atm.r0, atm.L0) * atm.fractionalR0[l]
 
                     crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
-                                         recIdx.flatten(order=order), :][:, recIdx.flatten(order=order)]
+                                         recIdx.flatten("F"), :][:, recIdx.flatten("F")]
 
 
         # populate the off-diagonal blocks left null in the previous step
@@ -249,13 +249,16 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0, or
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho2 = X + 1j * Y
 
-                    dist = dists(rho1, rho2, order=order)  
+                        
+                    dist = dists(rho1.T, rho2.T) 
+
+        
 
                     phaseCovElem[:, :, l] = covariance_matrix(
                         dist, atm.r0, atm.L0) * atm.fractionalR0[l]
 
                 crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
-                                     recIdx.flatten(order=order), :][:, recIdx.flatten(order=order)]
+                                     recIdx.flatten("F"), :][:, recIdx.flatten("F")]
                 
 
         crossCovMat = np.block(
@@ -398,12 +401,12 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
         return crossCovMat
 
 
-def dists(rho1, rho2, order="C"):
+def dists(rho1, rho2):
     if cuda_available:
         return cp.abs(cp.subtract.outer(rho1.flatten(), rho2.flatten()))
 
     else:
-        return np.abs(np.subtract.outer(rho1.flatten(order=order), rho2.flatten(order=order)))
+        return np.abs(np.subtract.outer(rho1.flatten(), rho2.flatten()))
 
 
 
@@ -438,7 +441,7 @@ def reconstructionGrid(mask, os, dm_space=False):
 
 
 
-def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2, order="C"):
+def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
 
     nLenslet = validLenslet.shape[0]
 
@@ -510,15 +513,79 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2, order="C
     Gamma = Gamma.todense()
     
     
-    Gamma = Gamma[:, gridMask.flatten(order=order)] 
+    Gamma = Gamma[:, gridMask.flatten("F")] 
     return Gamma, gridMask
 
 
 
+def get_xyxy_permutation_matrix(N):
+    xyxy_permutation_matrix = np.zeros((N, N))
+    for n in range(N//2):
+        xyxy_permutation_matrix[n, 2*n] = 1  
+        xyxy_permutation_matrix[n + N//2, 2*n+1] = 1 
+
+    return xyxy_permutation_matrix
+
+
+def get_signal_permutation_matrix(mask, n_lgs):
+
+    N = mask.shape[0]
+
+    c_ids = np.array([f"[{i}, {j}]" for i in range(N) for j in range(N) if mask[i, j]])
+    f_ids = np.array([f"[{i}, {j}]" for j in range(N) for i in range(N) if mask[i, j]])
+
+
+    permutation_Signal_C2F = np.zeros((len(c_ids), len(c_ids)))
+
+    for row_id, c_id in enumerate(c_ids):
+        permutation_Signal_C2F[np.where(f_ids==c_id)[0][0], row_id] = 1
 
 
 
+    permutation_Signal_C2F = block_diag(*[permutation_Signal_C2F]*2)
+
+    permutation_Signal_C2F = block_diag(*[permutation_Signal_C2F]*n_lgs)
+
+    return permutation_Signal_C2F
+
+def get_dm_permutation_matrix(mask):
+
+    N = mask.shape[0]
+
+    c_ids = np.array([f"[{i}, {j}]" for i in range(N) for j in range(N) if mask[i, j]])
+    f_ids = np.array([f"[{i}, {j}]" for j in range(N) for i in range(N) if mask[i, j]])
+
+
+    permutation_DM_F2C = np.zeros((len(c_ids), len(c_ids)))
+
+    for row_id, c_id in enumerate(c_ids):
+        permutation_DM_F2C[np.where(f_ids==c_id)[0][0], row_id] = 1
+
+    return permutation_DM_F2C
 
 
 
+def get_filtering_matrix(unfiltered_mask, filtered_mask, n_lgs):
+    filtering_matrix = np.zeros((np.count_nonzero(filtered_mask), np.count_nonzero(unfiltered_mask)))
 
+    unfiltered_mask_arr = unfiltered_mask.flatten("F") 
+    filtered_mask_arr = filtered_mask.flatten("F") 
+
+    count_row = 0
+    count_col = 0
+
+
+    for i in range(len(unfiltered_mask_arr)):
+        if unfiltered_mask_arr[i] and filtered_mask_arr[i]:
+            filtering_matrix[count_row, count_col] = 1
+            count_row += 1
+            count_col +=1
+
+        elif unfiltered_mask_arr[i]:
+            count_col +=1
+    
+    filtering_matrix = block_diag(*[filtering_matrix]*2)
+
+    filtering_matrix = block_diag(*[filtering_matrix]*n_lgs)
+
+    return filtering_matrix
