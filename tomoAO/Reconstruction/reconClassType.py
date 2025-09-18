@@ -242,6 +242,10 @@ class tomoReconstructor:
         return self._R_unfiltered
 
     def buildCovarianceMatrices(self):
+        """
+        The auto and cross covariance matrices are computed here (with or without GPU acceleration). 
+        These so-called zonal covariance matrices are computed for the baselines created by the meshes that sample the WFS (with an o.s.=2 default). 
+        """
         print("Building the covariance matrices")
         self.Cox = []
         for i in range(len(self.mmseStar)):
