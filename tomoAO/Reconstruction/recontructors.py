@@ -71,10 +71,16 @@ def averaging_bayesian_reconstructor_dm_space(IM, weight_vector, inv_cov_mat, al
     """
     This function computes the Bayesian reconstructor as:
 
-    :math:`R = {(H^{T} W^{T} + A)}^{-1} H^{T} W^{T}`
-
+    :math:`R = {(H^{T} (H W)^{T} + \alpha C_\phi^{-1})}^{-1} H^{T} (H W)^{T}`
+    where
+        R: The reconstructor matrix
+        H: The interaction matrix (empirical or otherwise)
+        W: A diagonal matrix with weights as a function of flux. The weights are in practice adjusted with a fudge factor 
+        \alpha: a weight vector (again) to regularise the inversion
+        C_\phi^{-1}: THe inverse of the phase covariance matrix expressed in DM command space
+        
     Args:
-        IM:
+        IM: 
         weight_vector:
         inv_cov_mat:
         median_intensity:
