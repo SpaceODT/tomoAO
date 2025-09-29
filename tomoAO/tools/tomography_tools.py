@@ -26,6 +26,7 @@ from time import time
 from math import gamma, pow, sin, pi
 from numba import njit, prange
 
+import aotools
 
 
 bessel_i_kernel_code = r'''
@@ -272,14 +273,9 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
 
 arcsec2radian = np.pi / 180 / 3600
 def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0):
-    start_init = time()
 
     recIdx = reconstructionGrid(mask, os, dm_space)
     if src1 == src2:
-        print("\n------------------------------")
-        print("Starting Cxx")
-        print("------------------------------\n")
-
 
         arcsec2radian = cp.pi / 180 / 3600
         nPts = recIdx.shape[0]
@@ -338,13 +334,9 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
             [[crossCovCell[i, j] for j in range(len(src1))] for i in range(len(src2))])
         crossCovMat = np.vstack(crossCovMat)
 
-        print(f"Cxx took {time() - start_init} seconds")
 
         return crossCovMat
     else:
-        print("\n------------------------------")
-        print("Starting Cox")
-        print("------------------------------\n")
 
         arcsec2radian = cp.pi / 180 / 3600
         nPts = recIdx.shape[0]
@@ -397,7 +389,6 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
         if len(src1) > 1:
             crossCovMat = cp.vstack(crossCovMat)
 
-        print(f"Cox took {time() - start_init} seconds\n")
         return crossCovMat
 
 
@@ -540,11 +531,7 @@ def get_signal_permutation_matrix(mask, n_lgs):
     for row_id, c_id in enumerate(c_ids):
         permutation_Signal_C2F[np.where(f_ids==c_id)[0][0], row_id] = 1
 
-
-
-    permutation_Signal_C2F = block_diag(*[permutation_Signal_C2F]*2)
-
-    permutation_Signal_C2F = block_diag(*[permutation_Signal_C2F]*n_lgs)
+    permutation_Signal_C2F = block_diag(*[permutation_Signal_C2F]*2*n_lgs)
 
     return permutation_Signal_C2F
 
@@ -571,6 +558,7 @@ def get_filtering_matrix(unfiltered_mask, filtered_mask, n_lgs):
     unfiltered_mask_arr = unfiltered_mask.flatten("F") 
     filtered_mask_arr = filtered_mask.flatten("F") 
 
+
     count_row = 0
     count_col = 0
 
@@ -584,8 +572,61 @@ def get_filtering_matrix(unfiltered_mask, filtered_mask, n_lgs):
         elif unfiltered_mask_arr[i]:
             count_col +=1
     
-    filtering_matrix = block_diag(*[filtering_matrix]*2)
+    filtering_matrix = block_diag(*[filtering_matrix]*2*n_lgs)
 
-    filtering_matrix = block_diag(*[filtering_matrix]*n_lgs)
 
     return filtering_matrix
+
+
+
+
+def modalRemovalMatrices(weight, act_mask, subap_mask, n_valid_act, n_lgs):
+    if len(weight) != np.count_nonzero(subap_mask):
+        weight = np.ones([np.count_nonzero(subap_mask)*2, n_lgs])
+
+    # 1 %% Piston-Tip-Tilt removal in DM space
+    zern = aotools.zernikeArray(3, act_mask.shape[0]).reshape(3, -1).T
+    rem = zern[act_mask.flatten(), :]
+    actPTTremMat = np.eye(n_valid_act) - rem @ np.linalg.pinv(rem)
+
+    
+    # 2 %% TT removal in slope space    
+    nValidLenslet = np.count_nonzero(subap_mask)
+    nLinLenslet = subap_mask.shape[0]
+    rem = np.tile(np.array((1, 0)), (nValidLenslet, 1)).flatten()  # x-y slope ordering
+    rem = np.array((rem, np.flipud(rem))).T
+
+    slopesTTremMat_ = []
+    pinvRemTT_ = []
+    for k in range(n_lgs):
+        w_ = weight[:, k]
+        weightMatrix = np.tile(w_, (2, 1))
+        pinvRemTT_.append(np.linalg.inv((rem.T * weightMatrix) @ rem) @ (rem.T * weightMatrix))
+        slopesTTremMat_.append(np.eye(2 * nValidLenslet) - rem @ pinvRemTT_[k])
+        # slopesTTremMat_.append((np.eye(2 * nValidLenslet) - rem @ pinvRemTT_[k]).T)
+    slopesTTremMat = block_diag(*slopesTTremMat_)
+
+    # 3 %% Focus removal in slope space
+    zern = aotools.zernikeArray(3, nLinLenslet).reshape(3, -1).T[:, -2:]
+    rem = zern[subap_mask.flatten(), :]
+    # TODO replace hard-coded value by somehing agnostic, general and intelligent
+    # this factor is applied to the focus projection matrix to comply with existing foccents projected read from file in the old reconstructor
+    rem = rem.flatten() / 1585.8872704595105
+    pinvRemFocus_ = []
+    for k in range(n_lgs):
+        w_ = weight[:, k]
+        pinvRemFocus_.append(1 / ((rem.T * w_) @ rem) * (rem.T * w_))
+    pinvRemFocus = np.hstack(pinvRemFocus_)
+
+    if n_lgs == 1:
+        return actPTTremMat, slopesTTremMat, np.vstack((block_diag(*pinvRemTT_), pinvRemFocus))
+    else:
+        # compute common (i.e. average) tip/tilt over the nLgs channels
+        common_tilt = 1 / n_lgs * np.hstack(pinvRemTT_)
+        # compute matrix-based common-tilt removal from each channel
+        A = np.tile(np.array([[1, 0], [0, 1]]), (4, 1))
+        M = A @ np.linalg.pinv(A)
+        # the vstack() applies I-A@A**-1 to accomplish the common-tilt removal from each channel
+        return actPTTremMat, slopesTTremMat, -np.vstack(
+            [(np.eye(2 * n_lgs) - M) @ (block_diag(*pinvRemTT_)), -common_tilt, pinvRemFocus])
+

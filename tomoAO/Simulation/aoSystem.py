@@ -43,7 +43,6 @@ class AOSystem:
         # %% -----------------------     NGS   ----------------------------------
         # create the Source object
         if "ngs" not in kwargs:
-            # print("Here----------------")
             ngs = Source(optBand=param['opticalBand'],
                          magnitude=param['magnitude'],
                          altitude=param['srcAltitude'])
@@ -120,10 +119,10 @@ class AOSystem:
 
 
             dm.act_mask = act_mask
+            dm.unfiltered_act_mask = act_mask
             tel.resolution = resolution
 
         else:
-
 
             tel.resolution = param["dm_resolution"]
             dm = DeformableMirror(telescope=tel,
@@ -140,16 +139,6 @@ class AOSystem:
             # Re-instate original telescope resolution
             tel.resolution = param["resolution"]
 
-            # from scipy.io import loadmat
-
-            # dm_modes_matlab_data = loadmat('/home/joaomonteiro/Desktop/temp/dm_modes.mat')
-
-            # dm_modes_matlab = np.array(dm_modes_matlab_data['dm_modes'].todense())
-
-            # dm.modes = dm_modes_matlab
-
-
-        # lgsAst**tel*dm
 
         # %% -----------------------     Wave Front Sensor   ----------------------------------
         if "wfs" not in kwargs:
@@ -181,24 +170,19 @@ class AOSystem:
 
 
             wfs.valid_subapertures = unfiltered_subap_mask
-            wfs.subap_mask = unfiltered_subap_mask #Force existence of subap_mask variable for backwards compatibility
 
         else:
             wfs = kwargs["wfs"]
             unfiltered_subap_mask = wfs.unfiltered_subap_mask.copy()
             filtered_subap_mask = wfs.filtered_subap_mask.copy()
 
-            wfs.subap_mask = unfiltered_subap_mask
 
 
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
 
-        # all_valid_subapertures = wfs.all_valid_subapertures.copy()
-        # outputReconstructiongrid = tools.reconstructionGrid(unfiltered_subap_mask, param['os'], dm_space=False)
         outputReconstructiongrid = tools.reconstructionGrid(filtered_subap_mask, param['os'], dm_space=False)
         
-        # outputReconstructiongrid = tools.reconstructionGrid(all_valid_subapertures, param['os'], dm_space=False)
 
 
         # %% -----------------------     Self Allocation   ----------------------------------
@@ -212,6 +196,7 @@ class AOSystem:
         self.mmseStar = ngs
         self.outputReconstructiongrid = outputReconstructiongrid
         self.sciSrc = sciSrc
+
         self.unfiltered_subap_mask = unfiltered_subap_mask
         self.filtered_subap_mask = filtered_subap_mask
         self.unfiltered_act_mask = dm.unfiltered_act_mask

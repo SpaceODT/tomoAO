@@ -24,7 +24,7 @@ Python package with atmospheric tomography generic functions and tools
 
     Or clone the repository
     ```sh
-    git clone https://github.com/cmcorreia/PyTomo
+    git clone https://github.com/SpaceODT/tomoAO
     pip install -e 'path to tomoAO'
     ```
     

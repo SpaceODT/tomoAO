@@ -67,7 +67,11 @@ class tomoReconstructor:
 
     def __init__(self, aoSys, weight_vector=None, alpha=None,
                  model='zonal', noise_covariance=None, lag=0,
-                 weightOptimDir=-1, os=2, zernikeMode=None, indexation="xxyy", order="C"):
+                 weightOptimDir=-1, os=2, zernikeMode=None,
+                 minioning=None,
+                 remove_TT_F = False, 
+                 indexation="xxyy", 
+                 order="C"):
 
 
 
@@ -108,12 +112,13 @@ class tomoReconstructor:
 
         self.outputRecGrid = aoSys.outputReconstructiongrid
 
-        #All valid subap mask
+        #All subap mask
         self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
 
         #Valid subap mask
         self._filtered_subap_mask = aoSys.filtered_subap_mask
 
+        #All act mask
         self.unfiltered_act_mask = aoSys.unfiltered_act_mask
 
         if weight_vector is None:
@@ -127,8 +132,25 @@ class tomoReconstructor:
             self.noise_covariance = noise_covariance
 
 
-
-
+        if minioning is None:
+            self.minioning_matrix = np.eye(np.count_nonzero(self.unfiltered_act_mask))
+        else:
+            self.minioning_matrix = minioning
+        
+        if self.order == "C":
+            self.signal_permutation_matrix = tools.get_signal_permutation_matrix(self.unfiltered_subap_mask, self.nGuideStar)
+            self.dm_permutation_matrix = tools.get_dm_permutation_matrix(self.unfiltered_act_mask)
+        else:
+            self.signal_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
+            self.dm_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_act_mask))
+        
+        
+        if self.indexation == "xyxy":
+            self.xyxy_permutation_matrix = tools.get_xyxy_permutation_matrix(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
+        else:
+            self.xyxy_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
+        
+        self.remove_TT_F = remove_TT_F
 
 
         if isinstance(self.weightOptimDir, str):
@@ -151,8 +173,6 @@ class tomoReconstructor:
         # %% FITTING MATRIX
         if self.dm is not None:
             iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
-            # iFittingMatrix = 2*self.dm.modes[self.outputRecGrid.flatten("F"),]
-
 
             if cuda_available:
                 self.fittingMatrix = cp.linalg.pinv(cp.asarray(iFittingMatrix), rcond=1e-3).get()
@@ -202,10 +222,7 @@ class tomoReconstructor:
             self._weight_vector = val
 
         else:
-            # #Default weight vector TODO: Evaluate if this should be the default setting
-            # weight_vector = np.ones([2 * np.count_nonzero(self.unfiltered_subap_mask), self.nGuideStar])
-            # filteredAllValidMask = self.filtered_subap_mask.T[self.unfiltered_subap_mask.T]
-
+            #Default weight vector TODO: Evaluate if this should be the default setting
             weight_vector = np.ones([2 * np.count_nonzero(self.filtered_subap_mask), self.nGuideStar])
             filteredAllValidMask = self.filtered_subap_mask.T[self.filtered_subap_mask.T]
 
@@ -242,7 +259,10 @@ class tomoReconstructor:
         return self._R_unfiltered
 
     def buildCovarianceMatrices(self):
-        print("Building the covariance matrices")
+        """
+        The auto and cross covariance matrices are computed here (with or without GPU acceleration). 
+        These so-called zonal covariance matrices are computed for the baselines created by the meshes that sample the WFS (with an o.s.=2 default). 
+        """
         self.Cox = []
         for i in range(len(self.mmseStar)):
             if cuda_available:
@@ -250,7 +270,7 @@ class tomoReconstructor:
                                                           self.unfiltered_subap_mask, self.os)
             else:
                 res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                    self.unfiltered_subap_mask, self.os)
+                                    self.filtered_subap_mask, self.os)
             self.Cox.append(res)
 
 
@@ -260,11 +280,10 @@ class tomoReconstructor:
 
         else:
             self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                        self.unfiltered_subap_mask, self.os)
+                                                        self.filtered_subap_mask, self.os)
 
 
     def buildGamma(self):
-        print("Building Gamma")
         Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.filtered_subap_mask, amplMask=None,
                                                                       os=self.os)
         Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
@@ -276,19 +295,11 @@ class tomoReconstructor:
 
     def buildReconstructor(self):
         print("Using GPU" if cuda_available else "GPU not available, using CPU")
-
-        start = time()
+        
         self.buildGamma()
-        print(f"Took {time()-start} seconds to build Gamma")
-
-
-        start = time()
         self.buildCovarianceMatrices()
-        print(f"Took {time()-start} seconds to build the covariance matrices")
 
 
-        print("Building the reconstructor")
-        start_init = time()
 
 
         if cuda_available:
@@ -305,13 +316,15 @@ class tomoReconstructor:
             for k in range(self.nMmseStar):
 
                 if cuda_available:
-                    start = time()
 
                     self.RecStatSA[k] = (self.Cox[k] @ self.Gamma.T @ cp.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)).get()
-                    print(f"Second part took {time() - start} seconds")
+
+                    self.Cox = self.Cox.get()
+                    self.Cxx = self.Cxx.get()
+                    self.noise_covariance = self.noise_covariance.get()
+                    self.Gamma = self.Gamma.get()
 
                 else:
-                    
                     self.RecStatSA[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
 
         else:  # weighted sum over all the optimisation directions
@@ -322,59 +335,25 @@ class tomoReconstructor:
             self.RecStatSA[0] = CoxWAvr @  self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @  self.Gamma.T + self.noise_covariance)
 
 
-        self.reconstructor = np.array(self.fittingMatrix @ self.RecStatSA[0]) * self.guideStar[0].wavelength
-
 
         self.filtering_matrix = tools.get_filtering_matrix(self.unfiltered_subap_mask.copy(),
                                                            self.filtered_subap_mask.copy(), 
                                                            self.nGuideStar)
 
-        self.reconstructor = np.array(self.reconstructor@self.filtering_matrix)
+        if self.remove_TT_F:
+            self.actPTTremMat, self.slopesTTremMat, self.slopeTTFProj = tools.modalRemovalMatrices(self.weight_vector, 
+                                                                                    self.unfiltered_act_mask, 
+                                                                                    self.filtered_subap_mask, 
+                                                                                    self.dm.nValidAct, 
+                                                                                    self.nGuideStar)
 
+            self.reconstructor = np.array(self.dm_permutation_matrix@self.actPTTremMat@self.minioning_matrix@self.fittingMatrix@self.RecStatSA[0]@self.slopesTTremMat@self.filtering_matrix@self.signal_permutation_matrix@self.xyxy_permutation_matrix) * self.guideStar[0].wavelength
 
-        if self.order == "C":
-            self.signal_permutation_matrix = tools.get_signal_permutation_matrix(self.unfiltered_subap_mask, self.nGuideStar)
-            self.dm_permutation_matrix = tools.get_dm_permutation_matrix(self.unfiltered_act_mask)
-            self.reconstructor = np.array(self.dm_permutation_matrix@self.reconstructor@self.signal_permutation_matrix)
-
-
-        if self.indexation == "xyxy":
-            xyxy_permutation_matrix = tools.get_xyxy_permutation_matrix(self.reconstructor.shape[-1])
-            self.reconstructor = self.reconstructor @ xyxy_permutation_matrix
-
-        # unfiltered_mask = self.unfiltered_subap_mask.copy()
-        # filtered_mask = self.filtered_subap_mask.copy()
-
-        # M = np.zeros((np.count_nonzero(filtered_mask), np.count_nonzero(unfiltered_mask)))
-
-        # unfiltered_mask_arr = unfiltered_mask.flatten("F") 
-        # filtered_mask_arr = filtered_mask.flatten("F") 
-
-        # count_row = 0
-        # count_col = 0
-
-
-        # for i in range(len(unfiltered_mask_arr)):
-        #     if unfiltered_mask_arr[i] and filtered_mask_arr[i]:
-        #         M[count_row, count_col] = 1
-        #         count_row += 1
-        #         count_col +=1
-
-        #     elif unfiltered_mask_arr[i]:
-        #         count_col +=1
-        
-        # M = scipy.linalg.block_diag(*[M]*2)
-
-        # M = scipy.linalg.block_diag(*[M]*self.nGuideStar)
-
-        # self.reconstructor = np.array(self.reconstructor@M)
-
-
-        
+        else:
+            self.reconstructor = np.array(self.dm_permutation_matrix @ self.minioning_matrix @ self.fittingMatrix @ self.RecStatSA[0] @ self.filtering_matrix @ self.signal_permutation_matrix @ self.xyxy_permutation_matrix) * self.guideStar[0].wavelength
 
 
 
-        print(f"Took {time()-start_init} seconds to build the reconstructor")
 
 
 

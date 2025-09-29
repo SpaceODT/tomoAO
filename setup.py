@@ -29,7 +29,7 @@ setup(
     long_description=read("README.md"),
     long_description_content_type='text/markdown',
     packages = find_packages(),
-    url='https://github.com/cmcorreia/PyTomo',
+    url='https://github.com/SpaceODT/tomoAO',
     install_requires = [
     'aotools',
     'numpy',

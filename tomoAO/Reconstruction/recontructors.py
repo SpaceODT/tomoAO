@@ -15,13 +15,20 @@ except:
     cuda_available = False
 
 
-def tomographic_reconstructor_phase_space(config_file, config_dir, alpha, weight_vector=None, noise_covariance=None, debug=False):
+def tomographic_reconstructor_phase_space(config_file, config_dir, alpha, weight_vector=None, noise_covariance=None, debug=False, order="C", indexation="xxyy", remove_TT_F=False):
 
     config_vars = load_from_ini(config_file, ao_mode="MLAO", config_dir=config_dir)
 
     aoSys = AOSystem(config_vars)
 
-    rec = tomoReconstructor(aoSys, alpha=alpha, weight_vector=weight_vector, noise_covariance=noise_covariance, os=2)
+    rec = tomoReconstructor(aoSys, 
+                            alpha=alpha, 
+                            weight_vector=weight_vector, 
+                            noise_covariance=noise_covariance, 
+                            os=2,
+                            order=order,
+                            indexation=indexation,
+                            remove_TT_F=remove_TT_F)
 
     if debug:
         return rec
@@ -71,10 +78,16 @@ def averaging_bayesian_reconstructor_dm_space(IM, weight_vector, inv_cov_mat, al
     """
     This function computes the Bayesian reconstructor as:
 
-    :math:`R = {(H^{T} W^{T} + A)}^{-1} H^{T} W^{T}`
-
+    :math:`R = {(H^{T} (H W)^{T} + \alpha C_\phi^{-1})}^{-1} H^{T} (H W)^{T}`
+    where
+        R: The reconstructor matrix
+        H: The interaction matrix (empirical or otherwise)
+        W: A diagonal matrix with weights as a function of flux. The weights are in practice adjusted with a fudge factor 
+        \alpha: a weight vector (again) to regularise the inversion
+        C_\phi^{-1}: THe inverse of the phase covariance matrix expressed in DM command space
+        
     Args:
-        IM:
+        IM: 
         weight_vector:
         inv_cov_mat:
         median_intensity:
