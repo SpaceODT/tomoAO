@@ -556,8 +556,8 @@ def get_filtering_matrix(unfiltered_mask, filtered_mask, n_lgs):
     filtering_matrix = np.zeros((np.count_nonzero(filtered_mask), np.count_nonzero(unfiltered_mask)))
 
     unfiltered_mask_arr = unfiltered_mask.flatten("F") 
-    filtered_mask_arr = filtered_mask.flatten("F") 
-
+    filtered_mask_arr = filtered_mask.flatten("F")    
+    
 
     count_row = 0
     count_col = 0

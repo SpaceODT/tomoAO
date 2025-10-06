@@ -71,7 +71,8 @@ class tomoReconstructor:
                  minioning=None,
                  remove_TT_F = False, 
                  indexation="xxyy", 
-                 order="C"):
+                 order="C",
+                 filter_subapertures=False):
 
 
 
@@ -108,15 +109,25 @@ class tomoReconstructor:
         self.zernikeMode = zernikeMode
         self.indexation = indexation
         self.order = order
-
+        self.filter_subapertures = filter_subapertures
+        
 
         self.outputRecGrid = aoSys.outputReconstructiongrid
 
-        #All subap mask
-        self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
 
-        #Valid subap mask
-        self._filtered_subap_mask = aoSys.filtered_subap_mask
+        if self.filter_subapertures:
+            self.unfiltered_subap_mask = aoSys.filtered_subap_mask
+            self._filtered_subap_mask = aoSys.filtered_subap_mask
+        else:
+            self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
+            self._filtered_subap_mask = aoSys.filtered_subap_mask
+
+
+        # #All subap mask
+        # self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
+
+        # #Valid subap mask
+        # self._filtered_subap_mask = aoSys.filtered_subap_mask
 
         #All act mask
         self.unfiltered_act_mask = aoSys.unfiltered_act_mask

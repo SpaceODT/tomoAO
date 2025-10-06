@@ -173,10 +173,19 @@ class AOSystem:
 
         else:
             wfs = kwargs["wfs"]
-            unfiltered_subap_mask = wfs.unfiltered_subap_mask.copy()
-            filtered_subap_mask = wfs.filtered_subap_mask.copy()
 
 
+        
+        if "unfiltered_subap_mask" not in kwargs:
+            unfiltered_subap_mask = wfs.valid_subapertures.copy()
+        else:
+            unfiltered_subap_mask = kwargs["unfiltered_subap_mask"]
+        
+
+        if "filtered_subap_mask" not in kwargs:
+            filtered_subap_mask = wfs.valid_subapertures.copy()
+        else:
+            filtered_subap_mask = kwargs["filtered_subap_mask"]
 
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
