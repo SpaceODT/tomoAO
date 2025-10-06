@@ -123,12 +123,6 @@ class tomoReconstructor:
             self._filtered_subap_mask = aoSys.filtered_subap_mask
 
 
-        # #All subap mask
-        # self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
-
-        # #Valid subap mask
-        # self._filtered_subap_mask = aoSys.filtered_subap_mask
-
         #All act mask
         self.unfiltered_act_mask = aoSys.unfiltered_act_mask
 
