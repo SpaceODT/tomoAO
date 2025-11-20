@@ -21,7 +21,7 @@ def read(*paths, **kwargs):
 
 
 setup(
-    name = 'tomoAO',
+    name = 'tomoao',
     version=open("tomoAO/version.py").read().split('=')[1].strip().strip('"'),
     license = 'MIT',
     author = 'SpaceODT',
