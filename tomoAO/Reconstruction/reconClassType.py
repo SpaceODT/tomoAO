@@ -272,7 +272,7 @@ class tomoReconstructor:
         for i in range(len(self.mmseStar)):
             if cuda_available:
                 res = tools.spatioAngularCovarianceMatrix_gpu(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                                          self.unfiltered_subap_mask, self.os)
+                                                          self.filtered_subap_mask, self.os)
             else:
                 res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
                                     self.filtered_subap_mask, self.os)
@@ -281,7 +281,7 @@ class tomoReconstructor:
 
         if cuda_available:
             self.Cxx = tools.spatioAngularCovarianceMatrix_gpu(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                           self.unfiltered_subap_mask, self.os)
+                                                           self.filtered_subap_mask, self.os)
 
         else:
             self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
