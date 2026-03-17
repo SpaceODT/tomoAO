@@ -502,8 +502,7 @@ def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
     Gamma = csr_matrix((np.concatenate((s_x, s_y)), (v.flatten(), np.concatenate((indx, indy)))),
                        shape=(2 * nValidLenslet_, nMap ** 2))
     Gamma = Gamma.todense()
-    
-    
+
     Gamma = Gamma[:, gridMask.flatten("F")] 
     return Gamma, gridMask
 
@@ -578,6 +577,31 @@ def get_filtering_matrix(unfiltered_mask, filtered_mask, n_lgs):
     return filtering_matrix
 
 
+def get_different_filtered_subap_masks_filtering_matrix(list_filtered_subap_mask, filtered_subap_mask):
+    list_filtering_matrices = []
+    for valid_mask in list_filtered_subap_mask:
+        filtering_matrix = np.zeros((np.count_nonzero(valid_mask), np.count_nonzero(filtered_subap_mask)))
+
+        filtered_subap_mask_arr = filtered_subap_mask.flatten()
+        valid_mask_arr = valid_mask.flatten()
+
+        count_row = 0
+        count_col = 0
+
+        for i in range(len(filtered_subap_mask_arr)):
+            if filtered_subap_mask_arr[i] and valid_mask_arr[i]:
+                filtering_matrix[count_row, count_col] = 1
+                count_row += 1
+                count_col += 1
+
+            elif filtered_subap_mask_arr[i]:
+                count_col += 1
+        list_filtering_matrices.append(block_diag(*[filtering_matrix] * 2))
+
+    filtering_matrix = block_diag(*list_filtering_matrices)
+    filtering_matrix = filtering_matrix.T
+
+    return filtering_matrix
 
 
 def modalRemovalMatrices(weight, act_mask, subap_mask, n_valid_act, n_lgs):

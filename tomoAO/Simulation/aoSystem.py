@@ -184,14 +184,32 @@ class AOSystem:
 
         if "filtered_subap_mask" not in kwargs:
             filtered_subap_mask = wfs.valid_subapertures.copy()
-        else:
-            filtered_subap_mask = kwargs["filtered_subap_mask"]
+            list_filtered_subap_mask = [filtered_subap_mask] * len(lgsAst)
 
+        else:
+            if len(kwargs["filtered_subap_mask"].shape) > 2:
+                list_filtered_subap_mask = kwargs["filtered_subap_mask"]
+
+                if "filtered_subap_mask_operation" not in kwargs:
+                    mask_operation = "union"
+                else:
+                    mask_operation = kwargs["filtered_subap_mask_operation"]
+
+                if mask_operation == "union":
+                    filtered_subap_mask = np.logical_or.reduce(list_filtered_subap_mask)
+                elif mask_operation == "intersection":
+                    filtered_subap_mask = np.logical_and.reduce(list_filtered_subap_mask)
+                else:
+                    raise ValueError(f"'filtered_subap_mask_operation' must be 'union' or 'intersection', got '{mask_operation}'")
+
+            else:
+                filtered_subap_mask = kwargs["filtered_subap_mask"]
+                list_filtered_subap_mask = [filtered_subap_mask] * len(lgsAst)
 
         # %% -----------------------     Wave Front Reconstruction   ----------------------------------
 
         outputReconstructiongrid = tools.reconstructionGrid(filtered_subap_mask, param['os'], dm_space=False)
-        
+
 
 
         # %% -----------------------     Self Allocation   ----------------------------------
@@ -208,4 +226,5 @@ class AOSystem:
 
         self.unfiltered_subap_mask = unfiltered_subap_mask
         self.filtered_subap_mask = filtered_subap_mask
+        self.list_filtered_subap_mask = list_filtered_subap_mask
         self.unfiltered_act_mask = dm.unfiltered_act_mask

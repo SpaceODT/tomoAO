@@ -114,14 +114,20 @@ class tomoReconstructor:
 
         self.outputRecGrid = aoSys.outputReconstructiongrid
 
-
+        # self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
+        # self._filtered_subap_mask = aoSys.filtered_subap_mask
         if self.filter_subapertures:
+            # self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
+            # self._filtered_subap_mask = aoSys.filtered_subap_mask
             self.unfiltered_subap_mask = aoSys.filtered_subap_mask
             self._filtered_subap_mask = aoSys.filtered_subap_mask
         else:
+            # self.unfiltered_subap_mask = aoSys.filtered_subap_mask
+            # self._filtered_subap_mask = aoSys.filtered_subap_mask
             self.unfiltered_subap_mask = aoSys.unfiltered_subap_mask
             self._filtered_subap_mask = aoSys.filtered_subap_mask
 
+        self.list_filtered_subap_mask = aoSys.list_filtered_subap_mask
 
         #All act mask
         self.unfiltered_act_mask = aoSys.unfiltered_act_mask
@@ -148,10 +154,15 @@ class tomoReconstructor:
         else:
             self.signal_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
             self.dm_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_act_mask))
-        
+
+
+        if self.filter_subapertures:
+            self.different_filtered_subap_masks_filtering_matrix = tools.get_different_filtered_subap_masks_filtering_matrix(self.list_filtered_subap_mask, self.filtered_subap_mask)
+        else:
+            self.different_filtered_subap_masks_filtering_matrix = np.eye(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
         
         if self.indexation == "xyxy":
-            self.xyxy_permutation_matrix = tools.get_xyxy_permutation_matrix(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
+            self.xyxy_permutation_matrix = tools.get_xyxy_permutation_matrix(np.count_nonzero(self.unf4iltered_subap_mask)*2*self.nGuideStar)
         else:
             self.xyxy_permutation_matrix = np.eye(np.count_nonzero(self.unfiltered_subap_mask)*2*self.nGuideStar)
         
@@ -227,14 +238,27 @@ class tomoReconstructor:
             self._weight_vector = val
 
         else:
-            #Default weight vector TODO: Evaluate if this should be the default setting
-            weight_vector = np.ones([2 * np.count_nonzero(self.filtered_subap_mask), self.nGuideStar])
-            filteredAllValidMask = self.filtered_subap_mask.T[self.filtered_subap_mask.T]
+            #Default weight vector: per guide-star weight vectors concatenated
+            weights = []
+            # for i in range(self.nGuideStar):
+            #     mask_i = self.list_filtered_subap_mask[i]
+            #     weight_i = np.ones(2 * np.count_nonzero(mask_i))
+            #     valid = mask_i.T[self.filtered_subap_mask.T]
+            #     valid = np.tile(valid, 2)
+            #     if np.any(valid == 0):
+            #         weight_i[~valid] = 0
+            #     weights.append(weight_i)
 
-            filteredAllValidMask = np.tile(filteredAllValidMask, 2)
-            if np.any(filteredAllValidMask == 0):
-                weight_vector[~filteredAllValidMask] = 0
-            self._weight_vector = weight_vector
+            for i in range(self.nGuideStar):
+                mask_i = self.list_filtered_subap_mask[i]
+                valid = mask_i.T[self.filtered_subap_mask.T]
+                valid = np.tile(valid, 2)
+                weight_i = valid.astype(float)
+                weights.append(weight_i)
+
+            self.list_weight_vector = weights
+            self._weight_vector = np.concatenate(weights)
+            # self._weight_vector = np.array(weights)
 
 
     def computeDefaultWeightVector(self):
@@ -275,7 +299,7 @@ class tomoReconstructor:
                                                           self.filtered_subap_mask, self.os)
             else:
                 res = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, [self.mmseStar[i]], self.guideStar,
-                                    self.filtered_subap_mask, self.os)
+                                                          self.filtered_subap_mask, self.os)
             self.Cox.append(res)
 
 
@@ -285,15 +309,20 @@ class tomoReconstructor:
 
         else:
             self.Cxx = tools.spatioAngularCovarianceMatrix(self.tel, self.atmModel, self.guideStar, self.guideStar,
-                                                        self.filtered_subap_mask, self.os)
-
+                                                           self.filtered_subap_mask, self.os)
 
     def buildGamma(self):
-        Gamma, gridMask = tools.sparseGradientMatrixAmplitudeWeighted(self.filtered_subap_mask, amplMask=None,
-                                                                      os=self.os)
-        Gamma = [Gamma] * self.nGuideStar  # Replicate Gamma nMmseStar times
-        gridMask = [gridMask] * self.nGuideStar
-        Gamma = [np.asarray(mat) for mat in Gamma]
+        Gamma = []
+        gridMask = []
+        for i in range(self.nGuideStar):
+            # Gamma_i, gridMask_i = tools.sparseGradientMatrixAmplitudeWeighted(self.list_filtered_subap_mask[i], amplMask=None,
+            #                                                          os=self.os)
+
+            Gamma_i, gridMask_i = tools.sparseGradientMatrixAmplitudeWeighted(self.filtered_subap_mask, amplMask=None,
+                                                                     os=self.os)
+
+            Gamma.append(np.asarray(Gamma_i))
+            gridMask.append(gridMask_i)
         self.Gamma = block_diag(Gamma).todense()
         self.gridMask = gridMask
 
@@ -330,6 +359,7 @@ class tomoReconstructor:
                     self.Gamma = self.Gamma.get()
 
                 else:
+                    # return
                     self.RecStatSA[k] = self.Cox[k] @ self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @ self.Gamma.T + self.noise_covariance)
 
         else:  # weighted sum over all the optimisation directions
@@ -340,10 +370,12 @@ class tomoReconstructor:
             self.RecStatSA[0] = CoxWAvr @  self.Gamma.T @ np.linalg.pinv(self.Gamma @ self.Cxx @  self.Gamma.T + self.noise_covariance)
 
 
-
+        # return
         self.filtering_matrix = tools.get_filtering_matrix(self.unfiltered_subap_mask.copy(),
                                                            self.filtered_subap_mask.copy(), 
                                                            self.nGuideStar)
+
+        # return
 
         if self.remove_TT_F:
             self.actPTTremMat, self.slopesTTremMat, self.slopeTTFProj = tools.modalRemovalMatrices(self.weight_vector, 
@@ -352,10 +384,10 @@ class tomoReconstructor:
                                                                                     self.dm.nValidAct, 
                                                                                     self.nGuideStar)
 
-            self.reconstructor = np.array(self.dm_permutation_matrix@self.actPTTremMat@self.minioning_matrix@self.fittingMatrix@self.RecStatSA[0]@self.slopesTTremMat@self.filtering_matrix@self.signal_permutation_matrix@self.xyxy_permutation_matrix) * self.guideStar[0].wavelength
+            self.reconstructor = np.array(self.dm_permutation_matrix@self.actPTTremMat@self.minioning_matrix@self.fittingMatrix@self.RecStatSA[0]@self.slopesTTremMat@self.filtering_matrix@self.signal_permutation_matrix@self.xyxy_permutation_matrix@self.different_filtered_subap_masks_filtering_matrix) * self.guideStar[0].wavelength
 
         else:
-            self.reconstructor = np.array(self.dm_permutation_matrix @ self.minioning_matrix @ self.fittingMatrix @ self.RecStatSA[0] @ self.filtering_matrix @ self.signal_permutation_matrix @ self.xyxy_permutation_matrix) * self.guideStar[0].wavelength
+            self.reconstructor = np.array(self.dm_permutation_matrix @ self.minioning_matrix @ self.fittingMatrix @ self.RecStatSA[0]  @ self.filtering_matrix @ self.signal_permutation_matrix @ self.xyxy_permutation_matrix @ self.different_filtered_subap_masks_filtering_matrix) * self.guideStar[0].wavelength
 
 
 
