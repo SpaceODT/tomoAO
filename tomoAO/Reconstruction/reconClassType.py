@@ -83,7 +83,6 @@ class tomoReconstructor:
         order='C',
         filter_subapertures=False,
     ):
-        print("newnewnewnewnewnew")
         self.tel = ao_sys.tel
         self.atm_model = ao_sys.atm
 
