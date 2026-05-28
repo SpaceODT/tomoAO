@@ -171,6 +171,10 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                         y = src1[i].coordinates[0] * atm.altitude[l] * \
                             arcsec2radian * \
                             np.sin(src1[i].coordinates[1] * np.pi / 180)
+
+                        x += src1[i].offset_x
+                        y += src1[i].offset_y
+
                         X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
                                         stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
 
@@ -186,6 +190,10 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                         y = src2[j].coordinates[0] * atm.altitude[l] * \
                             arcsec2radian * \
                             np.sin(src2[j].coordinates[1] * np.pi / 180)
+
+                        x += src2[j].offset_x
+                        y += src2[j].offset_y
+
                         X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
                                         stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                         rho2 = X + 1j * Y
@@ -234,18 +242,31 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                     y = src1[i].coordinates[0] * atm.altitude[l] * \
                         arcsec2radian * \
                         np.sin(src1[i].coordinates[1] * np.pi / 180)
+
+                    x += src1[i].offset_x
+                    y += src1[i].offset_y
+
+
                     X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho1 = X + 1j * Y
                     # STAR 2
                     coneCompressionFactor = 1 - \
                                             atm.altitude[l] / src2[j].altitude
+
                     x = src2[j].coordinates[0] * atm.altitude[l] * \
                         arcsec2radian * \
                         np.cos(src2[j].coordinates[1] * np.pi / 180)
+
+
                     y = src2[j].coordinates[0] * atm.altitude[l] * \
                         arcsec2radian * \
                         np.sin(src2[j].coordinates[1] * np.pi / 180)
+
+                    x += src2[j].offset_x
+                    y += src2[j].offset_y
+
+
                     X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho2 = X + 1j * Y
@@ -297,6 +318,11 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                         y = src1[i].coordinates[0] * atm.altitude[l] * \
                             arcsec2radian * \
                             cp.sin(src1[i].coordinates[1] * cp.pi / 180)
+
+                        x += src1[i].offset_x
+                        y += src1[i].offset_y
+
+
                         X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
                                         stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
 
@@ -311,6 +337,11 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                         y = src2[j].coordinates[0] * atm.altitude[l] * \
                             arcsec2radian * \
                             cp.sin(src2[j].coordinates[1] * cp.pi / 180)
+
+                        x += src2[j].offset_x
+                        y += src2[j].offset_y
+
+
                         X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
                                         stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                         rho2 = X + 1j * Y
@@ -356,6 +387,11 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                     y = src1[i].coordinates[0] * atm.altitude[l] * \
                         arcsec2radian * \
                         cp.sin(src1[i].coordinates[1] * cp.pi / 180)
+
+                    x += src1[i].offset_x
+                    y += src1[i].offset_y
+
+
                     X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho1 = X + 1j * Y
@@ -369,6 +405,11 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                     y = src2[j].coordinates[0] * atm.altitude[l] * \
                         arcsec2radian * \
                         cp.sin(src2[j].coordinates[1] * cp.pi / 180)
+
+                    x += src2[j].offset_x
+                    y += src2[j].offset_y
+
+
                     X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
                                     stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
                     rho2 = X + 1j * Y
