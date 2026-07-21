@@ -28,6 +28,12 @@ class AOSystem:
 
     Parameters
     ----------
+    param : dict
+        Configuration dictionary. Requires the keys ``'dm_resolution'``,
+        ``'nSubaperture'`` and ``'mechanicalCoupling'`` to rebuild the
+        deformable mirror, ``'resolution'`` to restore the telescope
+        resolution, and ``'opticalBand'``, ``'magnitude'`` and
+        ``'srcAltitude'`` to build the default ``mmse_star``.
     tel : Telescope
         OOPAO Telescope object.
     atm : Atmosphere
@@ -36,17 +42,19 @@ class AOSystem:
         OOPAO DeformableMirror object.
     lgsAst : list[Source] or Asterism
         Laser guide star sources.
-    mmse_star : Source or list[Source]
-        Optimisation (MMSE) target(s).
     filtered_subap_mask : ndarray (2D) or list[ndarray] or ndarray (3D)
         Valid subaperture mask(s) after flux filtering.
 
         - **2D array**: the same mask is used for every LGS.
         - **list of 2D arrays** or **3D array** (first axis = LGS index):
           one mask per LGS. The common mask used for covariance computation
-          is derived via ``mask_operation``.
-    act_mask : ndarray, optional
-        Boolean actuator mask. Defaults to ``dm.act_mask`` when not provided.
+          is derived via ``filtered_subap_mask_operation``.
+    unfiltered_act_mask : ndarray, optional
+        Boolean actuator mask. Defaults to ``dm.unfiltered_act_mask`` when
+        not provided.
+    mmse_star : Source or list[Source], optional
+        Optimisation (MMSE) target(s). Defaults to a single ``Source`` built
+        from ``param``.
     wfs : object, optional
         WFS object stored for reference. Not used internally.
     sci_src : Source, optional
@@ -55,7 +63,7 @@ class AOSystem:
         Full (unfiltered) subaperture mask representing every physically
         illuminated subaperture. Defaults to the common filtered mask when
         not provided.
-    mask_operation : {'union', 'intersection'}, optional
+    filtered_subap_mask_operation : {'union', 'intersection'}, optional
         How to derive the single common mask from per-LGS masks.
         Only relevant when ``filtered_subap_mask`` is a list or 3D array.
         Default is ``'union'``.
@@ -151,12 +159,16 @@ class AOSystem:
 
             mmse_star.offset_x = 0
             mmse_star.offset_y = 0
-        # else:
-        #     #TODO: Check if mmse_star is a list
-        #     if mmse_star.offset_x is None:
-        #         mmse_star.offset_x = 0
-        #     if mmse_star.offset_y is None:
-        #         mmse_star.offset_y = 0
+        else:
+            if isinstance(mmse_star, list):
+                for i in range(len(mmse_star)):
+                    mmse_star[i].offset_x = 0
+                    mmse_star[i].offset_y = 0
+            else:
+                if mmse_star.offset_x is None:
+                    mmse_star.offset_x = 0
+                if mmse_star.offset_y is None:
+                    mmse_star.offset_y = 0
 
 
         # --- store ---------------------------------------------------------

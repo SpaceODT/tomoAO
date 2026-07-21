@@ -333,6 +333,9 @@ class tomoReconstructor:
         GCG_N = G @ Cxx @ G.T + N
 
         if self.optim_dir_weights == -1:
+            self.optim_dir_weights = [1/self.n_mmse_stars] * self.n_mmse_stars
+
+        if self.optim_dir_weights == -1:
             GT_inv = G.T @ pinv(GCG_N)
             self.rec_per_dir = [
                 _to_numpy(Cox[k] @ GT_inv) for k in range(self.n_mmse_stars)
