@@ -75,7 +75,7 @@ def tomographic_reconstructor_dm_space(aoSys, IM, weight, alpha, Cn=None):
 
 
 def averaging_bayesian_reconstructor_dm_space(IM, weight_vector, inv_cov_mat, alpha):
-    """
+    r"""
     This function computes the Bayesian reconstructor as:
 
     :math:`R = {(H^{T} (H W)^{T} + \alpha C_\phi^{-1})}^{-1} H^{T} (H W)^{T}`

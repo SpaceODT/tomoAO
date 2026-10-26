@@ -152,8 +152,7 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
 
     recIdx = reconstructionGrid(mask, os, dm_space)
     if src1 == src2:  # auto-covariance matrix
-        
-        arcsec2radian = np.pi / 180 / 3600
+
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
@@ -162,47 +161,11 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
                     phaseCovElem = np.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                     for l in range(0, len(atm.altitude)):
                         # CROSS COVARIANCE BETWEEN TWO STARS
-                        # STAR 1
-                        coneCompressionFactor = 1 - \
-                                                atm.altitude[l] / src1[i].altitude
-                        x = src1[i].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            np.cos(src1[i].coordinates[1] * np.pi / 180)
-                        y = src1[i].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            np.sin(src1[i].coordinates[1] * np.pi / 180)
+                        rho1 = sourceGridCoordinates(src1[i], atm.altitude[l], nPts, tel.D)
+                        rho2 = sourceGridCoordinates(src2[j], atm.altitude[l], nPts, tel.D)
 
-                        x += src1[i].offset_x
-                        y += src1[i].offset_y
+                        dist = dists(rho1.T, rho2.T)
 
-                        X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
-                                        stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-
-                        rho1 = X + 1j * Y
-
-
-                        # STAR 2
-                        coneCompressionFactor = 1 - \
-                                                atm.altitude[l] / src2[j].altitude
-                        x = src2[j].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            np.cos(src2[j].coordinates[1] * np.pi / 180)
-                        y = src2[j].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            np.sin(src2[j].coordinates[1] * np.pi / 180)
-
-                        x += src2[j].offset_x
-                        y += src2[j].offset_y
-
-                        X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
-                                        stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                        rho2 = X + 1j * Y
-
-                        
-                        
-                        dist = dists(rho1.T, rho2.T) 
- 
-          
                         phaseCovElem[:, :, l] = covariance_matrix(
                             dist, atm.r0, atm.L0) * atm.fractionalR0[l]
 
@@ -222,66 +185,25 @@ def spatioAngularCovarianceMatrix(tel, atm, src1, src2, mask, os, dm_space=0):
         return crossCovMat
     else:
 
-
-        arcsec2radian = np.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
             for j in range(0, len(src2)):
 
-
                 phaseCovElem = np.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                 for l in range(0, len(atm.altitude)):
                     # CROSS COVARIANCE BETWEEN TWO STARS
-                    # STAR 1
-                    coneCompressionFactor = 1 - \
-                                            atm.altitude[l] / src1[i].altitude
-                    x = src1[i].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        np.cos(src1[i].coordinates[1] * np.pi / 180)
-                    y = src1[i].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        np.sin(src1[i].coordinates[1] * np.pi / 180)
+                    rho1 = sourceGridCoordinates(src1[i], atm.altitude[l], nPts, tel.D)
+                    rho2 = sourceGridCoordinates(src2[j], atm.altitude[l], nPts, tel.D)
 
-                    x += src1[i].offset_x
-                    y += src1[i].offset_y
-
-
-                    X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
-                                    stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                    rho1 = X + 1j * Y
-                    # STAR 2
-                    coneCompressionFactor = 1 - \
-                                            atm.altitude[l] / src2[j].altitude
-
-                    x = src2[j].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        np.cos(src2[j].coordinates[1] * np.pi / 180)
-
-
-                    y = src2[j].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        np.sin(src2[j].coordinates[1] * np.pi / 180)
-
-                    x += src2[j].offset_x
-                    y += src2[j].offset_y
-
-
-                    X, Y = meshgrid(nPts, tel.D, offset_x=x, offset_y=y,
-                                    stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                    rho2 = X + 1j * Y
-
-                        
-                    dist = dists(rho1.T, rho2.T) 
-
-        
+                    dist = dists(rho1.T, rho2.T)
 
                     phaseCovElem[:, :, l] = covariance_matrix(
                         dist, atm.r0, atm.L0) * atm.fractionalR0[l]
 
                 crossCovCell[i, j] = np.sum(phaseCovElem, axis=2)[
                                      recIdx.flatten("F"), :][:, recIdx.flatten("F")]
-                
+
 
         crossCovMat = np.block(
             [[crossCovCell[i, j] for j in range(len(src2))] for i in range(len(src1))])
@@ -298,7 +220,6 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
     recIdx = reconstructionGrid(mask, os, dm_space)
     if src1 == src2:
 
-        arcsec2radian = cp.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
@@ -308,43 +229,8 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                     phaseCovElem = cp.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                     for l in range(0, len(atm.altitude)):
                         # CROSS COVARIANCE BETWEEN TWO STARS
-                        # STAR 1
-
-                        coneCompressionFactor = 1 - \
-                                                atm.altitude[l] / src1[i].altitude
-                        x = src1[i].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            cp.cos(src1[i].coordinates[1] * cp.pi / 180)
-                        y = src1[i].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            cp.sin(src1[i].coordinates[1] * cp.pi / 180)
-
-                        x += src1[i].offset_x
-                        y += src1[i].offset_y
-
-
-                        X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
-                                        stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-
-                        rho1 = X + 1j * Y
-
-                        # STAR 2
-                        coneCompressionFactor = 1 - \
-                                                atm.altitude[l] / src2[j].altitude
-                        x = src2[j].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            cp.cos(src2[j].coordinates[1] * cp.pi / 180)
-                        y = src2[j].coordinates[0] * atm.altitude[l] * \
-                            arcsec2radian * \
-                            cp.sin(src2[j].coordinates[1] * cp.pi / 180)
-
-                        x += src2[j].offset_x
-                        y += src2[j].offset_y
-
-
-                        X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
-                                        stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                        rho2 = X + 1j * Y
+                        rho1 = sourceGridCoordinates(src1[i], atm.altitude[l], nPts, tel.D)
+                        rho2 = sourceGridCoordinates(src2[j], atm.altitude[l], nPts, tel.D)
 
                         dist = dists(rho1.T, rho2.T)  # not sure why, using the transpose makes it equal to Matlab's
 
@@ -369,7 +255,6 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
         return crossCovMat
     else:
 
-        arcsec2radian = cp.pi / 180 / 3600
         nPts = recIdx.shape[0]
         crossCovCell = np.empty((len(src1), len(src2)), dtype=object)
         for i in range(0, len(src1)):
@@ -377,42 +262,8 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
                 phaseCovElem = cp.zeros((nPts ** 2, nPts ** 2, len(atm.altitude)))
                 for l in range(0, len(atm.altitude)):
                     # CROSS COVARIANCE BETWEEN TWO STARS
-                    # STAR 1
-
-                    coneCompressionFactor = 1 - \
-                                            atm.altitude[l] / src1[i].altitude
-                    x = src1[i].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        cp.cos(src1[i].coordinates[1] * cp.pi / 180)
-                    y = src1[i].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        cp.sin(src1[i].coordinates[1] * cp.pi / 180)
-
-                    x += src1[i].offset_x
-                    y += src1[i].offset_y
-
-
-                    X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
-                                    stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                    rho1 = X + 1j * Y
-
-                    # STAR 2
-                    coneCompressionFactor = 1 - \
-                                            atm.altitude[l] / src2[j].altitude
-                    x = src2[j].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        cp.cos(src2[j].coordinates[1] * cp.pi / 180)
-                    y = src2[j].coordinates[0] * atm.altitude[l] * \
-                        arcsec2radian * \
-                        cp.sin(src2[j].coordinates[1] * cp.pi / 180)
-
-                    x += src2[j].offset_x
-                    y += src2[j].offset_y
-
-
-                    X, Y = meshgrid(nPts, tel.D, offset_x=x.get(), offset_y=y.get(),
-                                    stretch_x=coneCompressionFactor, stretch_y=coneCompressionFactor)
-                    rho2 = X + 1j * Y
+                    rho1 = sourceGridCoordinates(src1[i], atm.altitude[l], nPts, tel.D)
+                    rho2 = sourceGridCoordinates(src2[j], atm.altitude[l], nPts, tel.D)
 
                     dist = dists(rho1.T, rho2.T)  # not sure why, using the transpose makes it equal to Matlab's
 
@@ -431,6 +282,56 @@ def spatioAngularCovarianceMatrix_gpu(tel, atm, src1, src2, mask, os, dm_space=0
             crossCovMat = cp.vstack(crossCovMat)
 
         return crossCovMat
+
+
+def sourceGridCoordinates(src, altitude, nPts, D):
+    """
+    Coordinates at a layer of the nPts x nPts phase nodes seen in the direction of src.
+
+    The node q of the WFS looking at src sees the pupil point p = R(-rotation) (q + offset),
+    with src.offset_x, src.offset_y in m and src.rotation in rad (0 if absent; see
+    fieldTransformToSourceOffset for the conversion from an OOPAO FieldTransformer).
+    p is then projected along the line of sight onto the layer,
+        p (1 - altitude / src.altitude) + altitude * direction,
+    so for a LGS the offset is compressed by the cone like the rest of the pupil.
+
+    Returns
+    -------
+    rho : ndarray (nPts, nPts), complex
+        x + 1j * y in m, same layout as meshgrid.
+    """
+    X, Y = meshgrid(nPts, D, offset_x=getattr(src, 'offset_x', 0) or 0,
+                    offset_y=getattr(src, 'offset_y', 0) or 0)
+    theta = getattr(src, 'rotation', 0) or 0
+    if theta != 0:
+        X, Y = np.cos(theta) * X + np.sin(theta) * Y, -np.sin(theta) * X + np.cos(theta) * Y
+
+    coneCompressionFactor = 1 - altitude / src.altitude
+    x = src.coordinates[0] * altitude * arcsec2radian * np.cos(src.coordinates[1] * np.pi / 180)
+    y = src.coordinates[0] * altitude * arcsec2radian * np.sin(src.coordinates[1] * np.pi / 180)
+    return (X * coneCompressionFactor + x) + 1j * (Y * coneCompressionFactor + y)
+
+
+def fieldTransformToSourceOffset(shift_x, shift_y, rotation_angle, pixelSize):
+    """
+    Offset [m] and rotation [rad] for sourceGridCoordinates of a WFS behind an OOPAO
+    FieldTransformer with the given shift (pixels) and rotation (degrees).
+
+    The FieldTransformer maps the pupil pixel p to R (p - c) + c + shift, with (x, y) =
+    (column, row) and c = n/2 (half a pixel away from the pupil centre (n-1)/2), so the WFS
+    node q sees the pupil at R^-1 (q - d - shift) + d = R^-1 (q + offset), d = (1/2, 1/2) px,
+    i.e. offset = -shift - (I - R) d.
+
+    Returns
+    -------
+    offset_x, offset_y : float, m
+    rotation : float, rad
+    """
+    theta = np.deg2rad(rotation_angle)
+    d = 0.5
+    offset_x = -shift_x - (d - (np.cos(theta) * d - np.sin(theta) * d))
+    offset_y = -shift_y - (d - (np.sin(theta) * d + np.cos(theta) * d))
+    return offset_x * pixelSize, offset_y * pixelSize, theta
 
 
 def dists(rho1, rho2):
@@ -471,82 +372,190 @@ def reconstructionGrid(mask, os, dm_space=False):
     return val
 
 
+def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask=None, os=2):
+    """
+    Sparse gradient matrix weighted by the pupil illumination.
 
+    Gamma maps the phase on the (os*nLenslet+1)^2 reconstruction nodes (subaperture corners
+    plus os-1 intermediate points per side) to the x and y slopes of the valid lenslets:
+    rows = [x slopes; y slopes] in validLenslet column-major order, columns = the nodes kept
+    in gridMask (column-major).
 
-def sparseGradientMatrixAmplitudeWeighted(validLenslet, amplMask, os=2):
+    Each slope is a weighted mean of the one-step phase differences between neighbouring
+    nodes of the lenslet's (os+1)x(os+1) node block:
+        s_x = os * sum_ij w_ij (phi(i,j+1) - phi(i,j)) / sum_ij w_ij
+        w_ij = r_i * a(i,j) * a(i,j+1)
+    with a = amplMask (node illumination, see amplitudeMaskForGradient) and r_i the row
+    profile of the standard stencil ([1 2 1]/4 for os = 2, [1 3 8 3 1]/16 for os = 4,
+    trapezoidal otherwise); s_y likewise in the other direction. Hence:
+     - with an all-ones mask (default) it is identical to the standard stencil
+     - a difference that involves a dark node has zero weight, so phase values outside the
+       pupil never enter the slopes
+     - a pure ramp gives the same slope on every lenslet whatever the mask; the mask only
+       matters for non-linear phase
+    A lenslet without any illuminated node pair in one direction gets an all-zero row.
 
+    Parameters
+    ----------
+    validLenslet : ndarray (nLenslet, nLenslet), bool
+    amplMask : ndarray (os*nLenslet+1, os*nLenslet+1), optional
+        Node illumination (default ones).
+    os : int
+        Oversampling: 2 (default), 4, or any integer >= 1.
+
+    Returns
+    -------
+    Gamma : np.matrix (2*nValid, nNodes)
+    gridMask : ndarray (os*nLenslet+1, os*nLenslet+1), bool
+    """
     nLenslet = validLenslet.shape[0]
-
     nMap = os * nLenslet + 1
-
     if amplMask is None:
         amplMask = np.ones((nMap, nMap))
+    amplMask = np.asarray(amplMask, dtype=float)
+    if amplMask.shape != (nMap, nMap):
+        raise ValueError(f"amplMask must be {nMap} x {nMap}")
+    dsa = 1  # slope units: phase difference per subaperture
 
-    nValidLenslet_ = np.count_nonzero(validLenslet)
-    dsa = 1
+    if os == 2:  # row profile of the standard stencil
+        r = np.array([1, 2, 1]) / 4
+    elif os == 4:
+        r = np.array([1, 3, 8, 3, 1]) / 16
+    else:
+        r = np.r_[0.5, np.ones(os - 1), 0.5] / os
 
-    i0x = np.tile([0, 1, 2], 3)
-
-    j0x = np.repeat([0, 1, 2], 3)
-
-    i0y = np.tile([0, 1, 2], 3)
-
-    j0y = np.repeat([0, 1, 2], 3)
-
-    s0x = np.array([-1 / 4, -1 / 2, -1 / 4, 0, 0, 0, 1 / 4, 1 / 2, 1 / 4]) * (1 / dsa)
-
-    s0y = -np.array([1 / 4, 0, -1 / 4, 1 / 2, 0, -1 / 2, 1 / 4, 0, -1 / 4]) * (1 / dsa)
-
-    Gv = np.array([[-2, 2, -1, 1], [-2, 2, -1, 1], [-1, 1, -2, 2], [-1, 1, -2, 2]])
-
-    i_x = np.zeros(9 * nValidLenslet_)
-    j_x = np.zeros(9 * nValidLenslet_)
-    s_x = np.zeros(9 * nValidLenslet_)
-    i_y = np.zeros(9 * nValidLenslet_)
-    j_y = np.zeros(9 * nValidLenslet_)
-    s_y = np.zeros(9 * nValidLenslet_)
-
-    jMap0, iMap0 = np.meshgrid(np.arange(0, 3), np.arange(0, 3))
-
+    jL, iL = np.nonzero(validLenslet.T)  # column-major, as the old loops
+    nValid = iL.size
+    nnzPer = (os + 1) ** 2
+    I = np.zeros(2 * nnzPer * nValid, dtype=int)
+    J = np.zeros_like(I)
+    V = np.zeros(2 * nnzPer * nValid)
     gridMask = np.zeros((nMap, nMap), dtype=bool)
+    ii, jj = np.meshgrid(np.arange(os + 1), np.arange(os + 1), indexing='ij')
+    emptyRows = 0
+    c = 0
+    for k in range(nValid):
+        i0 = iL[k] * os
+        j0 = jL[k] * os
+        a = amplMask[i0:i0 + os + 1, j0:j0 + os + 1]
+        nodes = np.ravel_multi_index((i0 + ii, j0 + jj), (nMap, nMap), order='F')
+        gridMask[i0:i0 + os + 1, j0:j0 + os + 1] = True
 
-    u = np.arange(0, 9)
+        # x slope: differences along columns, rows weighted by r
+        wx = r[:, None] * a[:, :-1] * a[:, 1:]
+        Sx = np.zeros((os + 1, os + 1))
+        if wx.sum() > 0:
+            wx = wx / wx.sum() * os / dsa
+            Sx[:, :-1] -= wx
+            Sx[:, 1:] += wx
+        else:
+            emptyRows += 1
 
-    for jLenslet in range(0, nLenslet):
-        jOffset = os * (jLenslet)
-        for iLenslet in range(0, nLenslet):
-            if validLenslet[iLenslet, jLenslet]:
-                I = (iLenslet) * os + 1
-                J = (jLenslet) * os + 1
+        # y slope: differences along rows, columns weighted by r
+        wy = r[None, :] * a[:-1, :] * a[1:, :]
+        Sy = np.zeros((os + 1, os + 1))
+        if wy.sum() > 0:
+            wy = wy / wy.sum() * os / dsa
+            Sy[:-1, :] -= wy
+            Sy[1:, :] += wy
+        else:
+            emptyRows += 1
 
-                a = amplMask[I - 1:I + os, J - 1:J + os]
+        idx = c + np.arange(nnzPer)
+        I[idx] = k
+        J[idx] = nodes.ravel(order='F')
+        V[idx] = Sx.ravel(order='F')
+        I[idx + nnzPer] = nValid + k
+        J[idx + nnzPer] = nodes.ravel(order='F')
+        V[idx + nnzPer] = Sy.ravel(order='F')
+        c += 2 * nnzPer
 
-                numIllum = np.sum(a)
-
-                if numIllum == (os + 1) ** 2:
-                    iOffset = os * (iLenslet)
-                    i_x[u] = i0x + iOffset
-                    j_x[u] = j0x + jOffset
-                    s_x[u] = s0x
-                    i_y[u] = i0y + iOffset
-                    j_y[u] = j0y + jOffset
-                    s_y[u] = s0y
-                    u = u + (os + 1) ** 2
-
-                    gridMask[iMap0 + iOffset, jMap0 + jOffset] = True
-
-    indx = np.ravel_multi_index((i_x.astype(int), j_x.astype(int)), (nMap, nMap), order='F')
-    indy = np.ravel_multi_index((i_y.astype(int), j_y.astype(int)), (nMap, nMap), order='F')
-
-    v = np.tile(np.arange(0, 2 * nValidLenslet_), (u.size, 1)).T
-
-    Gamma = csr_matrix((np.concatenate((s_x, s_y)), (v.flatten(), np.concatenate((indx, indy)))),
-                       shape=(2 * nValidLenslet_, nMap ** 2))
-    Gamma = Gamma.todense()
-
-    Gamma = Gamma[:, gridMask.flatten("F")] 
+    Gamma = csr_matrix((V, (I, J)), shape=(2 * nValid, nMap ** 2))
+    Gamma = Gamma[:, gridMask.flatten('F')].todense()
+    if emptyRows > 0:
+        import warnings
+        warnings.warn(f"{emptyRows} slope rows have no illuminated node pair and are set to zero")
     return Gamma, gridMask
 
+
+def transformPupil(pupil, shift_x=0, shift_y=0, rotation_angle=0):
+    """
+    Pupil seen by a SH whose EM field is shifted (pixels) and rotated (degrees) as by OOPAO's
+    FieldTransformer: the input point p goes to R (p - c) + c + shift, with (x, y) =
+    (column, row) and c = n/2, so the SH pixel p sees the pupil at R^-1 (p - c - shift) + c.
+    Bilinear interpolation, as in FieldTransformer.
+    """
+    from scipy.ndimage import map_coordinates
+    pupil = np.asarray(pupil, dtype=float)
+    if shift_x == 0 and shift_y == 0 and rotation_angle == 0:
+        return pupil
+    n = pupil.shape[0]
+    X, Y = np.meshgrid(np.arange(n), np.arange(n))
+    theta = np.deg2rad(rotation_angle)
+    c = n / 2
+    dx, dy = X - c - shift_x, Y - c - shift_y
+    x_in = np.cos(theta) * dx + np.sin(theta) * dy + c
+    y_in = -np.sin(theta) * dx + np.cos(theta) * dy + c
+    return map_coordinates(pupil, [y_in, x_in], order=1, mode='grid-constant', cval=0)
+
+
+def amplitudeMaskForGradient(pupil, validLenslet, os=2, method='hybrid',
+                             shift_x=0, shift_y=0, rotation_angle=0):
+    """
+    Node illumination for sparseGradientMatrixAmplitudeWeighted.
+
+    Returns the (os*nLenslet+1)^2 illumination of the reconstruction nodes (node k at
+    x_k = k*d/os, d the subaperture size, i.e. on pixel edges of the pupil). The pupil
+    resolution must be a multiple of nLenslet.
+
+    method
+     'hybrid' (default) area fraction for the nodes inside the pupil (pupil interpolated at
+              the node > 0.5), 0 for the nodes outside it, which carry no valid phase
+     'area'   illuminated fraction of the (d/os)x(d/os) cell centred on the node (exact
+              fractional pixel overlaps)
+     'point'  pupil bilinearly interpolated at the node
+    Nodes not used by any valid lenslet are set to 0.
+
+    shift_x, shift_y, rotation_angle : SH mis-registration, in pixels and degrees, with the
+    FieldTransformer convention (FieldTransformer.shift_x[k], ...). The pupil is first
+    transformed as seen by that SH. Give validLenslet of that SH.
+    """
+    validLenslet = np.asarray(validLenslet, dtype=bool)
+    nLenslet = validLenslet.shape[0]
+    P = transformPupil(pupil, shift_x, shift_y, rotation_angle)
+    nRes = P.shape[0]
+    if nRes % nLenslet:
+        raise ValueError(f"pupil resolution ({nRes}) must be a multiple of nLenslet ({nLenslet})")
+    nPx = nRes // nLenslet
+    nMap = os * nLenslet + 1
+    xk = np.arange(nMap) * nPx / os  # node positions in pixel-edge units
+
+    method = method.lower()
+    if method == 'hybrid':
+        return (amplitudeMaskForGradient(P, validLenslet, os, 'area')
+                * (amplitudeMaskForGradient(P, validLenslet, os, 'point') > 0.5))
+    elif method == 'area':
+        h = nPx / os
+        lo, hi = xk[:, None] - h / 2, xk[:, None] + h / 2
+        p = np.arange(1, nRes + 1)[None, :]
+        W = np.maximum(0, np.minimum(hi, p) - np.maximum(lo, p - 1))  # pixel/cell overlaps
+        area = W.sum(axis=1)
+        amplMask = (W @ P @ W.T) / np.outer(area, area)
+    elif method == 'point':
+        from scipy.interpolate import RegularGridInterpolator
+        x = np.arange(nRes) + 0.5
+        interp = RegularGridInterpolator((x, x), P, method='linear', bounds_error=False, fill_value=0)
+        Yo, Xo = np.meshgrid(xk, xk, indexing='ij')
+        amplMask = interp(np.stack([Yo, Xo], axis=-1))
+    else:
+        raise ValueError("method must be 'hybrid', 'area' or 'point'")
+
+    used = np.zeros((nMap, nMap), dtype=bool)  # keep the nodes used by valid lenslets
+    for i, j in zip(*np.nonzero(validLenslet)):
+        used[i * os:i * os + os + 1, j * os:j * os + os + 1] = True
+    amplMask[~used] = 0
+    amplMask[np.abs(amplMask - 1) < 1e-12] = 1
+    return amplMask
 
 
 def get_xyxy_permutation_matrix(N):

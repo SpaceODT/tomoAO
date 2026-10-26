@@ -65,6 +65,12 @@ class tomoReconstructor:
         Array ravelling order for permutation matrices: ``'C'`` (default) or ``'F'``.
     filter_subapertures : bool, optional
         Use the filtered subaperture mask as the working mask (default ``False``).
+    ampl_mask : None, str or list[ndarray], optional
+        Node illumination used to weight the gradient operator of each SH (one
+        block of ``Gamma`` per SH). ``None`` (default) uses the standard stencil,
+        so all blocks are equal; ``'hybrid'``, ``'area'`` or ``'point'`` compute
+        it with ``tools.amplitudeMaskForGradient`` from the pupil seen by each SH
+        (``ao_sys.wfs_pupils``); a list gives one mask per SH directly.
     """
 
     def __init__(
@@ -82,6 +88,7 @@ class tomoReconstructor:
         indexation='xxyy',
         order='C',
         filter_subapertures=False,
+        ampl_mask=None,
     ):
         self.tel = ao_sys.tel
         self.atm_model = ao_sys.atm
@@ -105,6 +112,8 @@ class tomoReconstructor:
         self.order = order
         self.filter_subapertures = filter_subapertures
         self.remove_tt_focus = remove_tt_focus
+        self.ampl_mask = ampl_mask
+        self.wfs_pupils = getattr(ao_sys, 'wfs_pupils', None)
 
         self.output_rec_grid = ao_sys.outputReconstructiongrid
 
@@ -301,13 +310,33 @@ class tomoReconstructor:
             self.filtered_subap_mask, self.os
         )
 
+    def _get_ampl_masks(self):
+        """Node illumination of each SH for its gradient operator (None = standard stencil)."""
+        if self.ampl_mask is None:
+            return [None] * self.n_guide_stars
+        if isinstance(self.ampl_mask, str):
+            if self.wfs_pupils is None:
+                raise ValueError("ampl_mask='%s' needs ao_sys.wfs_pupils" % self.ampl_mask)
+            return [
+                tools.amplitudeMaskForGradient(
+                    pupil, self.filtered_subap_mask, os=self.os, method=self.ampl_mask
+                )
+                for pupil in self.wfs_pupils
+            ]
+        if len(self.ampl_mask) != self.n_guide_stars:
+            raise ValueError(
+                f"ampl_mask has {len(self.ampl_mask)} masks for {self.n_guide_stars} guide stars"
+            )
+        return list(self.ampl_mask)
+
     def _build_gamma(self):
-        """Build block-diagonal slope-to-phase gradient matrix."""
+        """Build block-diagonal slope-to-phase gradient matrix, one block per SH."""
         gamma_blocks = []
         self.grid_masks = []
-        for _ in range(self.n_guide_stars):
+        self.ampl_masks = self._get_ampl_masks()
+        for ampl_mask in self.ampl_masks:
             G, grid_mask = tools.sparseGradientMatrixAmplitudeWeighted(
-                self.filtered_subap_mask, amplMask=None, os=self.os
+                self.filtered_subap_mask, amplMask=ampl_mask, os=self.os
             )
             gamma_blocks.append(np.asarray(G))
             self.grid_masks.append(grid_mask)
